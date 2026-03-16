@@ -18,17 +18,15 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. บันทึกลง MongoDB 
-    // ใส่ยันต์ @ts-ignore เพื่อบอก Vercel ว่า "ตรงนี้ฉันรับผิดชอบเอง ไม่ต้องตรวจ Type"
-    // @ts-ignore
+    // 👇 แก้ชื่อเป็น air_humidity ให้ตรงกับ Model แล้วครับ!
     const newEntry = await WaterLog.create({
       level: Number(payload.level),
       temperature: Number(payload.temperature || 0),
-      humidity: Number(payload.humidity || 0),
+      air_humidity: Number(payload.humidity || 0), // รับค่า humidity จาก ESP32 มาใส่ในช่อง air_humidity
       status: currentStatus,
       createdAt: new Date()
     });
 
-    // @ts-ignore
     return NextResponse.json({ 
       message: 'Data logged successfully', 
       data: newEntry 
