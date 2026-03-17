@@ -58,17 +58,30 @@ export default function Home() {
         fetch(`/api/devices?t=${timestamp}`, { cache: 'no-store' })
       ]);
 
-      // ✨ โล่ป้องกันที่ 1: บังคับให้เป็น Array เท่านั้น ป้องกัน .map() พัง
+      // 🛡️ เกราะชั้นที่ 1: ดักแปลงข้อมูลทุกตัวให้เป็น Number ตั้งแต่ตอนดึงมา ป้องกัน .toFixed พัง
       if (logRes.ok) {
         const logData = await logRes.json();
-        setLogs(Array.isArray(logData) ? logData : []);
+        const safeLogs = Array.isArray(logData) ? logData.map(l => ({
+          ...l,
+          level: Number(l.level) || 0,
+          temperature: Number(l.temperature) || 0,
+          air_humidity: Number(l.air_humidity ?? l.humidity) || 0
+        })) : [];
+        setLogs(safeLogs);
       }
       
       if (deviceRes.ok) {
         const devData = await deviceRes.json();
-        const validDevices = Array.isArray(devData) ? devData : [];
-        setDevices(validDevices);
-        checkAndNotify(validDevices); 
+        const safeDevices = Array.isArray(devData) ? devData.map(d => ({
+          ...d,
+          waterLevel: Number(d.waterLevel) || 0,
+          temperature: Number(d.temperature) || 0,
+          humidity: Number(d.humidity ?? d.air_humidity) || 0,
+          criticalThreshold: Number(d.criticalThreshold) || 7,
+          warningThreshold: Number(d.warningThreshold) || 3
+        })) : [];
+        setDevices(safeDevices);
+        checkAndNotify(safeDevices); 
       }
     } catch (e) { console.error("Fetch error:", e); }
   };
@@ -83,20 +96,20 @@ export default function Home() {
 
     if (Notification.permission === "granted" && Array.isArray(currentDevices)) {
       currentDevices.forEach(device => {
-        const wl = device.waterLevel || 0;
-        const crit = device.criticalThreshold || 7;
-        const warn = device.warningThreshold || 3;
+        const wl = device.waterLevel;
+        const crit = device.criticalThreshold;
+        const warn = device.warningThreshold;
         
         if (wl >= crit && lastNotifiedRef.current[device.mac] !== 'CRITICAL') {
           new Notification(`🚨 ระดับน้ำวิกฤต: ${device.name}`, {
-            body: `ขณะนี้ระดับน้ำสูงถึง ${wl.toFixed(1)} cm กรุณาตรวจสอบด่วน!`,
+            body: `ขณะนี้ระดับน้ำสูงถึง ${Number(wl).toFixed(1)} cm กรุณาตรวจสอบด่วน!`,
             icon: '/logo.png' 
           });
           lastNotifiedRef.current[device.mac] = 'CRITICAL';
         } 
         else if (wl >= warn && wl < crit && lastNotifiedRef.current[device.mac] !== 'WARNING') {
           new Notification(`⚠️ เฝ้าระวัง: ${device.name}`, {
-            body: `ระดับน้ำเริ่มสูงขึ้น: ${wl.toFixed(1)} cm`,
+            body: `ระดับน้ำเริ่มสูงขึ้น: ${Number(wl).toFixed(1)} cm`,
             icon: '/logo.png'
           });
           lastNotifiedRef.current[device.mac] = 'WARNING';
@@ -117,7 +130,7 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [timeframe]);
 
-  if (!isMounted) return <div className="min-h-screen bg-slate-50 dark:bg-[#060a14]" />; // ป้องกันจอขาวกระพริบ
+  if (!isMounted) return <div className="min-h-screen bg-slate-50 dark:bg-[#060a14]" />;
 
   const displayLogs = selectedDeviceMac === 'ALL' ? logs : logs.filter(log => log.mac === selectedDeviceMac);
   const displayDevices = selectedDeviceMac === 'ALL' ? devices : devices.filter(d => d.mac === selectedDeviceMac);
@@ -127,31 +140,27 @@ export default function Home() {
 
   if (selectedDeviceMac !== 'ALL' && displayDevices.length > 0) {
     const d = displayDevices[0];
-    currentLevel = d.waterLevel ?? 0;
-    currentTemp = d.temperature ?? 0;
-    currentHum = d.humidity ?? d.air_humidity ?? 0;
+    currentLevel = d.waterLevel;
+    currentTemp = d.temperature;
+    currentHum = d.humidity;
     lastUpdateTime = d.updatedAt || Date.now();
-    if (currentLevel >= (d.criticalThreshold || 7)) systemStatus = 'CRITICAL';
-    else if (currentLevel >= (d.warningThreshold || 3)) systemStatus = 'WARNING';
+    if (currentLevel >= d.criticalThreshold) systemStatus = 'CRITICAL';
+    else if (currentLevel >= d.warningThreshold) systemStatus = 'WARNING';
   } else if (devices.length > 0) {
-    // ✨ โล่ป้องกันที่ 2: เช็ค devices.length > 0 เสมอก่อนหา Math.max ไม่งั้นจะเกิดค่า -Infinity
-    currentLevel = devices.length > 0 ? Math.max(...devices.map(d => d.waterLevel ?? 0)) : 0; 
-    currentTemp = devices.reduce((sum, d) => sum + (d.temperature ?? 0), 0) / (devices.length || 1);
-    currentHum = devices.reduce((sum, d) => sum + (d.humidity ?? d.air_humidity ?? 0), 0) / (devices.length || 1);
+    currentLevel = Math.max(...devices.map(d => d.waterLevel)); 
+    currentTemp = devices.reduce((sum, d) => sum + d.temperature, 0) / devices.length;
+    currentHum = devices.reduce((sum, d) => sum + d.humidity, 0) / devices.length;
     lastUpdateTime = devices[0]?.updatedAt || Date.now(); 
-    if (devices.some(d => (d.waterLevel ?? 0) >= (d.criticalThreshold || 7))) systemStatus = 'CRITICAL';
-    else if (devices.some(d => (d.waterLevel ?? 0) >= (d.warningThreshold || 3))) systemStatus = 'WARNING';
+    if (devices.some(d => d.waterLevel >= d.criticalThreshold)) systemStatus = 'CRITICAL';
+    else if (devices.some(d => d.waterLevel >= d.warningThreshold)) systemStatus = 'WARNING';
   }
 
   const todayStr = new Date().toDateString();
   const todayLogs = displayLogs.filter(log => log.createdAt && new Date(log.createdAt).toDateString() === todayStr);
   
-  const todayMaxLevel = todayLogs.length > 0 ? Math.max(...todayLogs.map(l => Number(l.level) || 0)) : 0;
-  const todayAvgTemp = todayLogs.length > 0 ? (todayLogs.reduce((sum, l) => sum + (Number(l.temperature) || 0), 0) / todayLogs.length) : 0;
-  const todayAvgHum = todayLogs.length > 0 ? (todayLogs.reduce((sum, l) => {
-        const h = l.air_humidity !== undefined ? l.air_humidity : (l.humidity || 0);
-        return sum + Number(h);
-      }, 0) / todayLogs.length) : 0;
+  const todayMaxLevel = todayLogs.length > 0 ? Math.max(...todayLogs.map(l => l.level)) : 0;
+  const todayAvgTemp = todayLogs.length > 0 ? (todayLogs.reduce((sum, l) => sum + l.temperature, 0) / todayLogs.length) : 0;
+  const todayAvgHum = todayLogs.length > 0 ? (todayLogs.reduce((sum, l) => sum + l.air_humidity, 0) / todayLogs.length) : 0;
 
   const getStatusDesign = (level: number, warning: number, critical: number) => {
     const warnLimit = warning || 3;
@@ -214,9 +223,10 @@ export default function Home() {
       {/* 📜 CONTENT AREA */}
       <div className="max-w-7xl mx-auto px-4 pt-24 mt-6 space-y-6 relative z-10">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard label={selectedDeviceMac === 'ALL' ? 'Max Level' : 'Current Level'} val={currentLevel.toFixed(1)} unit="cm" subVal={`Peak: ${todayMaxLevel.toFixed(1)} cm`} icon={Waves} color="text-blue-500" showUI={showUI} delay="delay-[100ms]" />
-          <MetricCard label="Temperature" val={currentTemp.toFixed(1)} unit="°C" subVal={`Avg: ${todayAvgTemp.toFixed(1)} °C`} icon={Thermometer} color="text-orange-500" showUI={showUI} delay="delay-[200ms]" />
-          <MetricCard label="Humidity" val={currentHum.toFixed(0)} unit="%" subVal={`Avg: ${todayAvgHum.toFixed(0)} %`} icon={Droplets} color="text-cyan-500" showUI={showUI} delay="delay-[300ms]" />
+          {/* 🛡️ เกราะชั้นที่ 2: ใช้ Number() หุ้มก่อน .toFixed() ทุกบรรทัด */}
+          <MetricCard label={selectedDeviceMac === 'ALL' ? 'Max Level' : 'Current Level'} val={Number(currentLevel).toFixed(1)} unit="cm" subVal={`Peak: ${Number(todayMaxLevel).toFixed(1)} cm`} icon={Waves} color="text-blue-500" showUI={showUI} delay="delay-[100ms]" />
+          <MetricCard label="Temperature" val={Number(currentTemp).toFixed(1)} unit="°C" subVal={`Avg: ${Number(todayAvgTemp).toFixed(1)} °C`} icon={Thermometer} color="text-orange-500" showUI={showUI} delay="delay-[200ms]" />
+          <MetricCard label="Humidity" val={Number(currentHum).toFixed(0)} unit="%" subVal={`Avg: ${Number(todayAvgHum).toFixed(0)} %`} icon={Droplets} color="text-cyan-500" showUI={showUI} delay="delay-[300ms]" />
           <StatusCard status={systemStatus} lastUpdate={lastUpdateTime} showUI={showUI} delay="delay-[400ms]" />
         </div>
 
@@ -226,9 +236,9 @@ export default function Home() {
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-3 pl-1 flex items-center gap-2">Live Nodes Status</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               {devices.map((device) => {
-                const wl = device.waterLevel || 0;
-                const temp = device.temperature || 0;
-                const hum = device.humidity || device.air_humidity || 0;
+                const wl = device.waterLevel;
+                const temp = device.temperature;
+                const hum = device.humidity;
                 
                 const status = getStatusDesign(wl, device.warningThreshold, device.criticalThreshold);
                 const percent = Math.min((wl / (device.criticalThreshold || 10)) * 100, 100);
@@ -248,7 +258,7 @@ export default function Home() {
                         <div>
                           <h4 className="font-bold text-slate-800 dark:text-white uppercase text-xs group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate w-24">{device.name}</h4>
                           <div className={`text-[9px] font-bold mt-0.5 px-2 py-0.5 rounded-lg w-fit uppercase shadow-sm border border-white/50 dark:border-white/5 bg-white/60 dark:bg-black/30 ${status.color}`}>
-                            {wl.toFixed(1)} cm
+                            {Number(wl).toFixed(1)} cm
                           </div>
                         </div>
                       </div>
@@ -256,8 +266,8 @@ export default function Home() {
                     </div>
                     
                     <div className="flex gap-3 mt-1 pl-1 text-[10px] font-medium text-slate-500 dark:text-slate-400">
-                      <span className="flex items-center gap-1"><Thermometer size={10} className="text-orange-500" /> {temp.toFixed(1)}°C</span>
-                      <span className="flex items-center gap-1"><Droplets size={10} className="text-cyan-500" /> {hum.toFixed(1)}%</span>
+                      <span className="flex items-center gap-1"><Thermometer size={10} className="text-orange-500" /> {Number(temp).toFixed(1)}°C</span>
+                      <span className="flex items-center gap-1"><Droplets size={10} className="text-cyan-500" /> {Number(hum).toFixed(1)}%</span>
                     </div>
 
                     <MiniChart data={deviceMiniLogs} color={wl >= (device.criticalThreshold || 7) ? "#ef4444" : "#3b82f6"} />
