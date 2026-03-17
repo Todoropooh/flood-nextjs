@@ -9,7 +9,7 @@ import StatusDonut from '@/components/StatusDonut';
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 import { 
   Waves, Settings, Sun, Moon, Activity, Thermometer, 
-  Droplets, ChevronDown, AlertTriangle, CheckCircle 
+  Droplets, ChevronDown, AlertTriangle, CheckCircle, Database
 } from 'lucide-react';
 
 const DeviceMap = dynamic(() => import('@/components/DeviceMap'), { ssr: false });
@@ -48,8 +48,11 @@ export default function Home() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [timeframe, setTimeframe] = useState('day'); 
+  
+  // ✨ เพิ่ม State สำหรับดัก Error โดยเฉพาะ
+  const [apiError, setApiError] = useState<string | null>(null);
+  
   const { setTheme, resolvedTheme } = useTheme();
-
   const lastNotifiedRef = useRef<Record<string, string>>({});
 
   const fetchData = async () => {
@@ -60,34 +63,30 @@ export default function Home() {
         fetch(`/api/devices?t=${timestamp}`, { cache: 'no-store' })
       ]);
 
-      if (logRes.ok) {
-        const logData = await logRes.json();
-        const safeLogs = Array.isArray(logData) ? logData.map(l => ({
-          ...l,
-          level: safeNumber(l.level),
-          temperature: safeNumber(l.temperature),
-          air_humidity: safeNumber(l.air_humidity ?? l.humidity)
-        })) : [];
-        setLogs(safeLogs);
-        console.log("✅ Logs Loaded:", safeLogs.length); // เช็คว่าดึงข้อมูลได้ไหม
+      // ดักจับ Error กรณีต่อ DB ไม่ติด
+      if (!deviceRes.ok || !logRes.ok) {
+        setApiError(`API Error: ไม่สามารถเชื่อมต่อฐานข้อมูลได้ (Status: ${deviceRes.status})`);
+        return;
       }
+
+      setApiError(null); // เคลียร์ Error ถ้าโหลดสำเร็จ
+
+      const logData = await logRes.json();
+      const safeLogs = Array.isArray(logData) ? logData.map(l => ({
+        ...l, level: safeNumber(l.level), temperature: safeNumber(l.temperature), air_humidity: safeNumber(l.air_humidity ?? l.humidity)
+      })) : [];
+      setLogs(safeLogs);
       
-      if (deviceRes.ok) {
-        const devData = await deviceRes.json();
-        const safeDevices = Array.isArray(devData) ? devData.map(d => ({
-          ...d,
-          waterLevel: safeNumber(d.waterLevel),
-          temperature: safeNumber(d.temperature),
-          humidity: safeNumber(d.humidity ?? d.air_humidity),
-          criticalThreshold: safeNumber(d.criticalThreshold, 7),
-          warningThreshold: safeNumber(d.warningThreshold, 3)
-        })) : [];
-        setDevices(safeDevices);
-        checkAndNotify(safeDevices); 
-        console.log("✅ Devices Loaded:", safeDevices.length); // เช็คว่าดึงอุปกรณ์ได้ไหม
-      }
-    } catch (e) { 
-      console.error("❌ Fetch error:", e); 
+      const devData = await deviceRes.json();
+      const safeDevices = Array.isArray(devData) ? devData.map(d => ({
+        ...d, waterLevel: safeNumber(d.waterLevel), temperature: safeNumber(d.temperature), humidity: safeNumber(d.humidity ?? d.air_humidity), criticalThreshold: safeNumber(d.criticalThreshold, 7), warningThreshold: safeNumber(d.warningThreshold, 3)
+      })) : [];
+      
+      setDevices(safeDevices);
+      checkAndNotify(safeDevices); 
+      
+    } catch (e: any) { 
+      setApiError(`Network/Fetch Error: ${e.message}`);
     }
   };
 
@@ -112,10 +111,28 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [timeframe]);
 
-  // ✨ เปลี่ยนจากจอขาวเป็นโชว์คำว่ากำลังโหลด จะได้รู้ว่ามันค้างตรงนี้ไหม
+  // หน้าจอตอนกำลังโหลด
   if (!isMounted) return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-[#060a14]">
       <h1 className="text-xl font-bold text-slate-500 animate-pulse">กำลังเตรียมหน้าจอ...</h1>
+    </div>
+  );
+
+  // ✨ หน้าจอถ้าเกิด Database Error
+  if (apiError) return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-[#060a14] p-4">
+      <div className="bg-red-50 dark:bg-red-900/20 p-8 rounded-3xl border border-red-200 dark:border-red-500/30 text-center max-w-lg shadow-xl">
+        <Database size={48} className="text-red-500 mx-auto mb-4" />
+        <h1 className="text-xl font-bold text-red-600 dark:text-red-400 mb-2">เชื่อมต่อฐานข้อมูลล้มเหลว</h1>
+        <p className="text-sm text-red-500/80 mb-6">{apiError}</p>
+        <div className="text-left text-xs text-slate-600 dark:text-slate-400 space-y-2 bg-white/50 dark:bg-black/30 p-4 rounded-xl">
+          <p className="font-bold">💡 วิธีแก้ไขเบื้องต้น:</p>
+          <p>1. เข้าเว็บ MongoDB Atlas</p>
+          <p>2. ไปที่เมนู <b>Network Access</b> (ด้านซ้าย)</p>
+          <p>3. กด Add IP Address แล้วเลือก <b>Allow Access From Anywhere</b> (0.0.0.0/0)</p>
+          <p>4. รอ 1-2 นาที แล้วรีเฟรชหน้านี้ใหม่</p>
+        </div>
+      </div>
     </div>
   );
 
@@ -157,13 +174,11 @@ export default function Home() {
   return (
     <main className="min-h-screen relative pb-20 font-sans text-slate-800 dark:text-white bg-slate-50 dark:bg-[#060a14]">
       
-      {/* 🌌 Background */}
       <div className="fixed inset-0 -z-10">
         <img src="https://img.freepik.com/premium-photo/gradient-defocused-abstract-luxury-vivid-blurred-colorful-texture-wallpaper-photo-background_98870-1088.jpg" className="w-full h-full object-cover opacity-100" alt="bg" />
         <div className="absolute inset-0 bg-white/20 dark:bg-black/40 backdrop-blur-xl" />
       </div>
 
-      {/* 📌 FIXED HEADER */}
       <div className="fixed top-0 left-0 right-0 z-50 w-full bg-white/40 dark:bg-[#0a0f1c]/50 backdrop-blur-2xl border-b border-white/50 dark:border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -200,7 +215,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 📜 CONTENT AREA */}
       <div className="max-w-7xl mx-auto px-4 pt-24 mt-6 space-y-6 relative z-10 opacity-100">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard label={selectedDeviceMac === 'ALL' ? 'Max Level' : 'Current Level'} val={currentLevel.toFixed(1)} unit="cm" subVal={`Peak: ${todayMaxLevel.toFixed(1)} cm`} icon={Waves} color="text-blue-500" />
@@ -209,21 +223,21 @@ export default function Home() {
           <StatusCard status={systemStatus} lastUpdate={lastUpdateTime} />
         </div>
 
-        {/* Live Nodes Status */}
-        {selectedDeviceMac === 'ALL' && devices.length > 0 && (
-          <div>
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-3 pl-1 flex items-center gap-2">Live Nodes Status</h3>
+        {/* ✨ ถอดเงื่อนไข devices.length > 0 ออก เพื่อให้มันโชว์สถานะแม้ไม่มีอุปกรณ์ */}
+        <div>
+          <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-3 pl-1 flex items-center gap-2">Live Nodes Status</h3>
+          {devices.length === 0 ? (
+             <div className="bg-white/50 dark:bg-black/30 p-10 rounded-3xl border border-dashed border-slate-400 dark:border-slate-600 text-center backdrop-blur-xl">
+                <p className="text-slate-600 dark:text-slate-300 font-bold mb-2">ยังไม่มีข้อมูลอุปกรณ์แสดงผล</p>
+                <p className="text-xs text-slate-500">กรุณาเพิ่มอุปกรณ์ในหน้า Admin หรือรอให้บอร์ดส่งข้อมูลรอบถัดไป</p>
+             </div>
+          ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               {devices.map((device) => {
                 const wl = device.waterLevel;
                 const status = getStatusDesign(wl, device.warningThreshold, device.criticalThreshold);
                 const percent = Math.min((wl / (device.criticalThreshold || 10)) * 100, 100);
-
-                const deviceMiniLogs = logs
-                  .filter(l => l.mac === device.mac)
-                  .map(l => ({ level: l.level }))
-                  .reverse()
-                  .slice(-10);
+                const deviceMiniLogs = logs.filter(l => l.mac === device.mac).map(l => ({ level: l.level })).reverse().slice(-10);
 
                 return (
                   <div key={device.mac} onClick={() => setSelectedDeviceMac(device.mac)} className="cursor-pointer bg-white/50 dark:bg-[#111827]/60 border border-white/50 dark:border-white/10 p-5 rounded-3xl backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl relative flex flex-col group overflow-hidden shadow-sm">
@@ -255,10 +269,9 @@ export default function Home() {
                 );
               })}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Analytics History */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <div className="lg:col-span-8 bg-white/50 dark:bg-[#111827]/60 p-6 md:p-8 rounded-[2.5rem] border border-white/50 dark:border-white/10 shadow-lg dark:shadow-[0_8px_30px_rgba(0,0,0,0.4)] backdrop-blur-2xl min-h-[380px] flex flex-col relative group transition-colors hover:bg-white/60 dark:hover:bg-[#111827]/70">
             <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-6 relative z-10">
@@ -279,7 +292,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Device Map */}
         <div className="space-y-4 pt-2">
           <div className="bg-white/50 dark:bg-[#111827]/60 p-2 rounded-[2.5rem] border border-white/50 dark:border-white/10 shadow-lg dark:shadow-[0_8px_30px_rgba(0,0,0,0.4)] backdrop-blur-xl overflow-hidden">
             <div className="h-[400px] w-full rounded-[2rem] overflow-hidden relative z-0">
