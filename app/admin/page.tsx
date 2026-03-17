@@ -11,11 +11,11 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import html2canvas from 'html2canvas'; // 🌟 Import เครื่องมือถ่ายรูปหน้าจอ
+import * as htmlToImage from 'html-to-image'; // 🌟 เปลี่ยนมาใช้ค่ายนี้แทน!
 
 // 🌟 Import Component
 import NodeModal from '@/components/NodeModal'; 
-import WaterLevelChart from '@/components/WaterLevelChart'; // 🌟 Import กราฟ
+import WaterLevelChart from '@/components/WaterLevelChart'; 
 
 export default function AdminPage() {
   const { data: session } = useSession();
@@ -37,7 +37,7 @@ export default function AdminPage() {
   const [showUI, setShowUI] = useState(false);
 
   const [systemSettings, setSystemSettings] = useState({ systemOn: true, buzzerOn: true });
-  const [exportLogs, setExportLogs] = useState<any[]>([]); // 🌟 State สำหรับเก็บข้อมูลลงกราฟใน PDF
+  const [exportLogs, setExportLogs] = useState<any[]>([]); 
 
   const defaultDevice = { 
     name: '', mac: '', location: '', type: 'ESP32', image: '', 
@@ -57,7 +57,6 @@ export default function AdminPage() {
     setTimeout(() => setShowUI(true), 100);
   }, []);
 
-  // 🌟 ดึงข้อมูล Logs ย้อนหลังทันทีที่เปิดหน้าต่าง Export
   useEffect(() => {
     if (isExportModalOpen) {
       fetch(`/api/flood?timeframe=month`)
@@ -111,17 +110,23 @@ export default function AdminPage() {
         });
         doc.save(`User_Report_${new Date().getTime()}.pdf`);
       } else {
-        // 🌟 1. แอบถ่ายรูปกราฟที่ซ่อนไว้
+        // 🌟 1. แอบถ่ายรูปกราฟด้วย html-to-image (แก้ปัญหาเรื่อง Error สี)
         const chartElem = document.getElementById('pdf-chart-container');
         let chartImgData = null;
-        let canvasWidth = 0;
-        let canvasHeight = 0;
+        let canvasWidth = 800;
+        let canvasHeight = 400;
 
         if (chartElem) {
-          const canvas = await html2canvas(chartElem, { scale: 2, backgroundColor: '#ffffff' });
-          chartImgData = canvas.toDataURL('image/png');
-          canvasWidth = canvas.width;
-          canvasHeight = canvas.height;
+          try {
+            canvasWidth = chartElem.offsetWidth;
+            canvasHeight = chartElem.offsetHeight;
+            chartImgData = await htmlToImage.toPng(chartElem, { 
+              backgroundColor: '#ffffff',
+              pixelRatio: 2 // ให้ภาพชัดระดับ HD
+            });
+          } catch (err) {
+            console.error("ถ่ายรูปกราฟไม่สำเร็จ: ", err);
+          }
         }
 
         // 🌟 2. วาดหัวกระดาษ PDF
@@ -140,7 +145,7 @@ export default function AdminPage() {
 
         // 🌟 3. แปะรูปกราฟลงใน PDF (ถ้าถ่ายรูปสำเร็จ)
         if (chartImgData) {
-          const imgWidth = 182; // ความกว้างเต็มหน้ากระดาษ (เว้นขอบ 14mm ซ้ายขวา)
+          const imgWidth = 182; // ความกว้างเต็มหน้ากระดาษ
           const imgHeight = (canvasHeight * imgWidth) / canvasWidth; // คำนวณความสูงให้สมส่วน
           doc.addImage(chartImgData, 'PNG', 14, currentY, imgWidth, imgHeight);
           currentY += imgHeight + 10; // ดันจุดเริ่มต้นตารางลงมาใต้กราฟ
@@ -477,7 +482,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* 🌟 ฐานลับนินจา: ซ่อนกราฟไว้เพื่อให้ html2canvas มาถ่ายรูป */}
+      {/* 🌟 ฐานลับนินจา: ซ่อนกราฟไว้เพื่อให้กล้องใหม่ (html-to-image) มาถ่ายรูป */}
       <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '800px', height: '400px', zIndex: -50 }}>
         <div id="pdf-chart-container" style={{ width: '100%', height: '100%', backgroundColor: 'white', padding: '20px', borderRadius: '10px' }}>
            <h2 style={{ textAlign: 'center', color: '#1e293b', marginBottom: '15px', fontFamily: 'sans-serif', fontSize: '18px', fontWeight: 'bold' }}>

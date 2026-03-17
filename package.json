@@ -12,7 +12,7 @@
     "bcryptjs": "^3.0.3",
     "chart.js": "^4.5.1",
     "date-fns": "^4.1.0",
-    "html2canvas": "^1.4.1",
+    "html-to-image": "^1.11.13",
     "jose": "^6.2.1",
     "jsonwebtoken": "^9.0.3",
     "jspdf": "^4.2.0",
