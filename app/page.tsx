@@ -17,7 +17,7 @@ const DeviceMap = dynamic(() => import('@/components/DeviceMap'), { ssr: false }
 
 // 📊 1. Component กราฟจิ๋ว (Sparkline) สำหรับใส่ในการ์ดอุปกรณ์
 function MiniChart({ data, color = "#3b82f6" }: { data: any[], color?: string }) {
-  if (!data || data.length === 0) return <div className="h-10" />; 
+  if (!data || !Array.isArray(data) || data.length === 0) return <div className="h-10 w-full mt-1" />; 
   return (
     <div className="h-10 w-full mt-1 opacity-50">
       <ResponsiveContainer width="100%" height="100%">
@@ -53,24 +53,24 @@ export default function Home() {
   const fetchData = async () => {
     try {
       const timestamp = Date.now();
-      // ✨ ใช้ Promise.all ดึงข้อมูลพร้อมกัน ป้องกันการ render ผิดจังหวะ
       const [logRes, deviceRes] = await Promise.all([
         fetch(`/api/flood?timeframe=${timeframe}&t=${timestamp}`, { cache: 'no-store' }),
         fetch(`/api/devices?t=${timestamp}`, { cache: 'no-store' })
       ]);
 
-      if (logRes.ok && deviceRes.ok) {
+      // ✨ โล่ป้องกันที่ 1: บังคับให้เป็น Array เท่านั้น ป้องกัน .map() พัง
+      if (logRes.ok) {
         const logData = await logRes.json();
-        const devData = await deviceRes.json();
-        
-        // ✨ ใส่ Fallback Array ว่าง เพื่อไม่ให้เป็น null/undefined
-        setLogs(logData || []);
-        setDevices(devData || []);
-        if (devData) checkAndNotify(devData);
+        setLogs(Array.isArray(logData) ? logData : []);
       }
-    } catch (e) { 
-      console.error("Fetch error:", e); 
-    }
+      
+      if (deviceRes.ok) {
+        const devData = await deviceRes.json();
+        const validDevices = Array.isArray(devData) ? devData : [];
+        setDevices(validDevices);
+        checkAndNotify(validDevices); 
+      }
+    } catch (e) { console.error("Fetch error:", e); }
   };
 
   // 🔔 ฟังก์ชันจัดการ Push Notification
@@ -81,7 +81,7 @@ export default function Home() {
       Notification.requestPermission();
     }
 
-    if (Notification.permission === "granted") {
+    if (Notification.permission === "granted" && Array.isArray(currentDevices)) {
       currentDevices.forEach(device => {
         const wl = device.waterLevel || 0;
         const crit = device.criticalThreshold || 7;
@@ -112,12 +112,12 @@ export default function Home() {
     setIsMounted(true);
     fetchData();
     if (typeof window !== "undefined" && "Notification" in window) Notification.requestPermission();
-    setTimeout(() => setShowUI(true), 250); // ✨ เพิ่มเวลาดีเลย์นิดนึงให้ข้อมูลมาครบ
+    setTimeout(() => setShowUI(true), 250);
     const interval = setInterval(fetchData, 5000); 
     return () => clearInterval(interval);
   }, [timeframe]);
 
-  if (!isMounted) return null;
+  if (!isMounted) return <div className="min-h-screen bg-slate-50 dark:bg-[#060a14]" />; // ป้องกันจอขาวกระพริบ
 
   const displayLogs = selectedDeviceMac === 'ALL' ? logs : logs.filter(log => log.mac === selectedDeviceMac);
   const displayDevices = selectedDeviceMac === 'ALL' ? devices : devices.filter(d => d.mac === selectedDeviceMac);
@@ -134,8 +134,8 @@ export default function Home() {
     if (currentLevel >= (d.criticalThreshold || 7)) systemStatus = 'CRITICAL';
     else if (currentLevel >= (d.warningThreshold || 3)) systemStatus = 'WARNING';
   } else if (devices.length > 0) {
-    // ✨ ใช้ ?? เพื่อป้องกันการดึงค่า null แล้วกลายเป็น NaN หรือ Infinity
-    currentLevel = Math.max(...devices.map(d => d.waterLevel ?? 0)); 
+    // ✨ โล่ป้องกันที่ 2: เช็ค devices.length > 0 เสมอก่อนหา Math.max ไม่งั้นจะเกิดค่า -Infinity
+    currentLevel = devices.length > 0 ? Math.max(...devices.map(d => d.waterLevel ?? 0)) : 0; 
     currentTemp = devices.reduce((sum, d) => sum + (d.temperature ?? 0), 0) / (devices.length || 1);
     currentHum = devices.reduce((sum, d) => sum + (d.humidity ?? d.air_humidity ?? 0), 0) / (devices.length || 1);
     lastUpdateTime = devices[0]?.updatedAt || Date.now(); 
@@ -149,7 +149,6 @@ export default function Home() {
   const todayMaxLevel = todayLogs.length > 0 ? Math.max(...todayLogs.map(l => Number(l.level) || 0)) : 0;
   const todayAvgTemp = todayLogs.length > 0 ? (todayLogs.reduce((sum, l) => sum + (Number(l.temperature) || 0), 0) / todayLogs.length) : 0;
   const todayAvgHum = todayLogs.length > 0 ? (todayLogs.reduce((sum, l) => {
-        // ✨ รองรับทั้งชื่อตัวแปร air_humidity และ humidity
         const h = l.air_humidity !== undefined ? l.air_humidity : (l.humidity || 0);
         return sum + Number(h);
       }, 0) / todayLogs.length) : 0;
