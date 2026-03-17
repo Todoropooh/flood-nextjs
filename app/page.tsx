@@ -15,7 +15,22 @@ import {
 
 const DeviceMap = dynamic(() => import('@/components/DeviceMap'), { ssr: false });
 
-// 📊 1. Component กราฟจิ๋ว (Sparkline) สำหรับใส่ในการ์ดอุปกรณ์
+// 🛡️ ฟังก์ชันป้องกันแอปแครช (Safe Utilities)
+const safeNumber = (val: any, fallback = 0) => {
+  const num = Number(val);
+  return isNaN(num) ? fallback : num;
+};
+
+const safeMax = (arr: any[], key: string) => {
+  if (!arr || arr.length === 0) return 0;
+  // ใช้ reduce แทน Math.max เพื่อป้องกัน Stack Overflow เวลาข้อมูลมีเป็นหมื่นบรรทัด
+  return arr.reduce((max, item) => {
+    const val = safeNumber(item[key]);
+    return val > max ? val : max;
+  }, -Infinity);
+};
+
+// 📊 1. Component กราฟจิ๋ว
 function MiniChart({ data, color = "#3b82f6" }: { data: any[], color?: string }) {
   if (!data || !Array.isArray(data) || data.length === 0) return <div className="h-10 w-full mt-1" />; 
   return (
@@ -23,14 +38,7 @@ function MiniChart({ data, color = "#3b82f6" }: { data: any[], color?: string })
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data}>
           <YAxis hide domain={['auto', 'auto']} />
-          <Line 
-            type="monotone" 
-            dataKey="level" 
-            stroke={color} 
-            strokeWidth={1.5} 
-            dot={false} 
-            isAnimationActive={false}
-          />
+          <Line type="monotone" dataKey="level" stroke={color} strokeWidth={1.5} dot={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -47,7 +55,6 @@ export default function Home() {
   const [timeframe, setTimeframe] = useState('day'); 
   const { setTheme, resolvedTheme } = useTheme();
 
-  // 🔔 Ref สำหรับป้องกันการยิง Noti ซ้ำๆ ในรอบเดียว
   const lastNotifiedRef = useRef<Record<string, string>>({});
 
   const fetchData = async () => {
@@ -58,14 +65,13 @@ export default function Home() {
         fetch(`/api/devices?t=${timestamp}`, { cache: 'no-store' })
       ]);
 
-      // 🛡️ เกราะชั้นที่ 1: ดักแปลงข้อมูลทุกตัวให้เป็น Number ตั้งแต่ตอนดึงมา ป้องกัน .toFixed พัง
       if (logRes.ok) {
         const logData = await logRes.json();
         const safeLogs = Array.isArray(logData) ? logData.map(l => ({
           ...l,
-          level: Number(l.level) || 0,
-          temperature: Number(l.temperature) || 0,
-          air_humidity: Number(l.air_humidity ?? l.humidity) || 0
+          level: safeNumber(l.level),
+          temperature: safeNumber(l.temperature),
+          air_humidity: safeNumber(l.air_humidity ?? l.humidity)
         })) : [];
         setLogs(safeLogs);
       }
@@ -74,11 +80,11 @@ export default function Home() {
         const devData = await deviceRes.json();
         const safeDevices = Array.isArray(devData) ? devData.map(d => ({
           ...d,
-          waterLevel: Number(d.waterLevel) || 0,
-          temperature: Number(d.temperature) || 0,
-          humidity: Number(d.humidity ?? d.air_humidity) || 0,
-          criticalThreshold: Number(d.criticalThreshold) || 7,
-          warningThreshold: Number(d.warningThreshold) || 3
+          waterLevel: safeNumber(d.waterLevel),
+          temperature: safeNumber(d.temperature),
+          humidity: safeNumber(d.humidity ?? d.air_humidity),
+          criticalThreshold: safeNumber(d.criticalThreshold, 7),
+          warningThreshold: safeNumber(d.warningThreshold, 3)
         })) : [];
         setDevices(safeDevices);
         checkAndNotify(safeDevices); 
@@ -86,35 +92,24 @@ export default function Home() {
     } catch (e) { console.error("Fetch error:", e); }
   };
 
-  // 🔔 ฟังก์ชันจัดการ Push Notification
   const checkAndNotify = (currentDevices: any[]) => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
-    
-    if (Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-
     if (Notification.permission === "granted" && Array.isArray(currentDevices)) {
       currentDevices.forEach(device => {
         const wl = device.waterLevel;
-        const crit = device.criticalThreshold;
-        const warn = device.warningThreshold;
-        
-        if (wl >= crit && lastNotifiedRef.current[device.mac] !== 'CRITICAL') {
+        if (wl >= device.criticalThreshold && lastNotifiedRef.current[device.mac] !== 'CRITICAL') {
           new Notification(`🚨 ระดับน้ำวิกฤต: ${device.name}`, {
-            body: `ขณะนี้ระดับน้ำสูงถึง ${Number(wl).toFixed(1)} cm กรุณาตรวจสอบด่วน!`,
+            body: `ขณะนี้ระดับน้ำสูงถึง ${wl.toFixed(1)} cm กรุณาตรวจสอบด่วน!`,
             icon: '/logo.png' 
           });
           lastNotifiedRef.current[device.mac] = 'CRITICAL';
-        } 
-        else if (wl >= warn && wl < crit && lastNotifiedRef.current[device.mac] !== 'WARNING') {
+        } else if (wl >= device.warningThreshold && wl < device.criticalThreshold && lastNotifiedRef.current[device.mac] !== 'WARNING') {
           new Notification(`⚠️ เฝ้าระวัง: ${device.name}`, {
-            body: `ระดับน้ำเริ่มสูงขึ้น: ${Number(wl).toFixed(1)} cm`,
+            body: `ระดับน้ำเริ่มสูงขึ้น: ${wl.toFixed(1)} cm`,
             icon: '/logo.png'
           });
           lastNotifiedRef.current[device.mac] = 'WARNING';
-        }
-        else if (wl < warn) {
+        } else if (wl < device.warningThreshold) {
           lastNotifiedRef.current[device.mac] = 'NORMAL';
         }
       });
@@ -147,7 +142,7 @@ export default function Home() {
     if (currentLevel >= d.criticalThreshold) systemStatus = 'CRITICAL';
     else if (currentLevel >= d.warningThreshold) systemStatus = 'WARNING';
   } else if (devices.length > 0) {
-    currentLevel = Math.max(...devices.map(d => d.waterLevel)); 
+    currentLevel = safeMax(devices, 'waterLevel'); 
     currentTemp = devices.reduce((sum, d) => sum + d.temperature, 0) / devices.length;
     currentHum = devices.reduce((sum, d) => sum + d.humidity, 0) / devices.length;
     lastUpdateTime = devices[0]?.updatedAt || Date.now(); 
@@ -158,15 +153,13 @@ export default function Home() {
   const todayStr = new Date().toDateString();
   const todayLogs = displayLogs.filter(log => log.createdAt && new Date(log.createdAt).toDateString() === todayStr);
   
-  const todayMaxLevel = todayLogs.length > 0 ? Math.max(...todayLogs.map(l => l.level)) : 0;
+  const todayMaxLevel = safeMax(todayLogs, 'level');
   const todayAvgTemp = todayLogs.length > 0 ? (todayLogs.reduce((sum, l) => sum + l.temperature, 0) / todayLogs.length) : 0;
   const todayAvgHum = todayLogs.length > 0 ? (todayLogs.reduce((sum, l) => sum + l.air_humidity, 0) / todayLogs.length) : 0;
 
   const getStatusDesign = (level: number, warning: number, critical: number) => {
-    const warnLimit = warning || 3;
-    const critLimit = critical || 7;
-    if (level >= critLimit) return { color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/30', icon: <AlertTriangle size={24} className="text-red-500 animate-pulse" /> };
-    if (level >= warnLimit) return { color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/30', icon: <AlertTriangle size={24} className="text-orange-500" /> };
+    if (level >= critical) return { color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/30', icon: <AlertTriangle size={24} className="text-red-500 animate-pulse" /> };
+    if (level >= warning) return { color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/30', icon: <AlertTriangle size={24} className="text-orange-500" /> };
     return { color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', icon: <CheckCircle size={24} className="text-emerald-500" /> };
   };
 
@@ -175,11 +168,7 @@ export default function Home() {
       
       {/* 🌌 Background */}
       <div className="fixed inset-0 -z-10 transition-colors duration-700">
-        <img 
-          src="https://img.freepik.com/premium-photo/gradient-defocused-abstract-luxury-vivid-blurred-colorful-texture-wallpaper-photo-background_98870-1088.jpg" 
-          className={`w-full h-full object-cover transition-all duration-[3000ms] ease-out opacity-100 ${showUI ? 'scale-100' : 'scale-110 blur-sm'}`} 
-          alt="bg" 
-        />
+        <img src="https://img.freepik.com/premium-photo/gradient-defocused-abstract-luxury-vivid-blurred-colorful-texture-wallpaper-photo-background_98870-1088.jpg" className={`w-full h-full object-cover transition-all duration-[3000ms] ease-out opacity-100 ${showUI ? 'scale-100' : 'scale-110 blur-sm'}`} alt="bg" />
         <div className="absolute inset-0 bg-white/20 dark:bg-black/40 backdrop-blur-xl transition-colors duration-700" />
       </div>
 
@@ -223,10 +212,9 @@ export default function Home() {
       {/* 📜 CONTENT AREA */}
       <div className="max-w-7xl mx-auto px-4 pt-24 mt-6 space-y-6 relative z-10">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* 🛡️ เกราะชั้นที่ 2: ใช้ Number() หุ้มก่อน .toFixed() ทุกบรรทัด */}
-          <MetricCard label={selectedDeviceMac === 'ALL' ? 'Max Level' : 'Current Level'} val={Number(currentLevel).toFixed(1)} unit="cm" subVal={`Peak: ${Number(todayMaxLevel).toFixed(1)} cm`} icon={Waves} color="text-blue-500" showUI={showUI} delay="delay-[100ms]" />
-          <MetricCard label="Temperature" val={Number(currentTemp).toFixed(1)} unit="°C" subVal={`Avg: ${Number(todayAvgTemp).toFixed(1)} °C`} icon={Thermometer} color="text-orange-500" showUI={showUI} delay="delay-[200ms]" />
-          <MetricCard label="Humidity" val={Number(currentHum).toFixed(0)} unit="%" subVal={`Avg: ${Number(todayAvgHum).toFixed(0)} %`} icon={Droplets} color="text-cyan-500" showUI={showUI} delay="delay-[300ms]" />
+          <MetricCard label={selectedDeviceMac === 'ALL' ? 'Max Level' : 'Current Level'} val={currentLevel.toFixed(1)} unit="cm" subVal={`Peak: ${todayMaxLevel.toFixed(1)} cm`} icon={Waves} color="text-blue-500" showUI={showUI} delay="delay-[100ms]" />
+          <MetricCard label="Temperature" val={currentTemp.toFixed(1)} unit="°C" subVal={`Avg: ${todayAvgTemp.toFixed(1)} °C`} icon={Thermometer} color="text-orange-500" showUI={showUI} delay="delay-[200ms]" />
+          <MetricCard label="Humidity" val={currentHum.toFixed(0)} unit="%" subVal={`Avg: ${todayAvgHum.toFixed(0)} %`} icon={Droplets} color="text-cyan-500" showUI={showUI} delay="delay-[300ms]" />
           <StatusCard status={systemStatus} lastUpdate={lastUpdateTime} showUI={showUI} delay="delay-[400ms]" />
         </div>
 
@@ -237,17 +225,12 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               {devices.map((device) => {
                 const wl = device.waterLevel;
-                const temp = device.temperature;
-                const hum = device.humidity;
-                
                 const status = getStatusDesign(wl, device.warningThreshold, device.criticalThreshold);
-                const percent = Math.min((wl / (device.criticalThreshold || 10)) * 100, 100);
+                const critLimit = device.criticalThreshold === 0 ? 1 : device.criticalThreshold; // ป้องกันหารด้วย 0
+                const rawPercent = (wl / critLimit) * 100;
+                const percent = isNaN(rawPercent) ? 0 : Math.min(rawPercent, 100);
 
-                const deviceMiniLogs = logs
-                  .filter(l => l.mac === device.mac)
-                  .map(l => ({ level: l.level }))
-                  .reverse()
-                  .slice(-10);
+                const deviceMiniLogs = logs.filter(l => l.mac === device.mac).slice(-10).map(l => ({ level: l.level }));
 
                 return (
                   <div key={device.mac} onClick={() => setSelectedDeviceMac(device.mac)} className="cursor-pointer bg-white/50 dark:bg-[#111827]/60 border border-white/50 dark:border-white/10 p-5 rounded-3xl backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl relative flex flex-col group overflow-hidden shadow-sm">
@@ -258,7 +241,7 @@ export default function Home() {
                         <div>
                           <h4 className="font-bold text-slate-800 dark:text-white uppercase text-xs group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate w-24">{device.name}</h4>
                           <div className={`text-[9px] font-bold mt-0.5 px-2 py-0.5 rounded-lg w-fit uppercase shadow-sm border border-white/50 dark:border-white/5 bg-white/60 dark:bg-black/30 ${status.color}`}>
-                            {Number(wl).toFixed(1)} cm
+                            {wl.toFixed(1)} cm
                           </div>
                         </div>
                       </div>
@@ -266,14 +249,14 @@ export default function Home() {
                     </div>
                     
                     <div className="flex gap-3 mt-1 pl-1 text-[10px] font-medium text-slate-500 dark:text-slate-400">
-                      <span className="flex items-center gap-1"><Thermometer size={10} className="text-orange-500" /> {Number(temp).toFixed(1)}°C</span>
-                      <span className="flex items-center gap-1"><Droplets size={10} className="text-cyan-500" /> {Number(hum).toFixed(1)}%</span>
+                      <span className="flex items-center gap-1"><Thermometer size={10} className="text-orange-500" /> {device.temperature.toFixed(1)}°C</span>
+                      <span className="flex items-center gap-1"><Droplets size={10} className="text-cyan-500" /> {device.humidity.toFixed(1)}%</span>
                     </div>
 
-                    <MiniChart data={deviceMiniLogs} color={wl >= (device.criticalThreshold || 7) ? "#ef4444" : "#3b82f6"} />
+                    <MiniChart data={deviceMiniLogs} color={wl >= device.criticalThreshold ? "#ef4444" : "#3b82f6"} />
 
                     <div className="h-1 w-full bg-white/40 dark:bg-black/50 rounded-full overflow-hidden mt-3">
-                      <div className={`h-full rounded-full transition-all duration-1000 ${wl >= (device.criticalThreshold || 7) ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : wl >= (device.warningThreshold || 3) ? 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.5)]' : 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]'}`} style={{ width: `${percent}%` }} />
+                      <div className={`h-full rounded-full transition-all duration-1000 ${wl >= device.criticalThreshold ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : wl >= device.warningThreshold ? 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.5)]' : 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]'}`} style={{ width: `${percent}%` }} />
                     </div>
                   </div>
                 );
@@ -344,6 +327,14 @@ function StatusCard({ status, lastUpdate, showUI, delay }: any) {
   const isWarning = displayStatus.toLowerCase() === 'warning';
   const isOffline = displayStatus === 'OFFLINE';
   
+  // 🛡️ ฟังก์ชันช่วยจัดรูปแบบเวลาให้ปลอดภัย ไม่แครชแม้ค่าผิด
+  const safeTimeFormat = (dateVal: any) => {
+    if (!dateVal) return 'Waiting...';
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return 'Time Error';
+    return d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+  };
+
   return (
     <div className={`transform transition-all duration-1000 cubic-bezier(0.16, 1, 0.3, 1) ${delay} ${showUI ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-10 opacity-0 scale-95'}`}>
       <div className={`group bg-white/50 dark:bg-[#111827]/60 p-5 md:p-6 rounded-3xl border border-white/50 dark:border-white/10 shadow-lg backdrop-blur-xl h-[140px] flex flex-col justify-between transition-all duration-500 hover:-translate-y-1 hover:bg-white/60 dark:hover:bg-[#111827]/80 relative overflow-hidden`}>
@@ -363,7 +354,9 @@ function StatusCard({ status, lastUpdate, showUI, delay }: any) {
             <div className={`w-1.5 h-1.5 rounded-full ${isCritical ? 'bg-red-500 animate-ping' : isWarning ? 'bg-orange-500 animate-pulse' : isOffline ? 'bg-slate-400' : 'bg-emerald-500'}`} />
             {displayStatus.toUpperCase()}
           </div>
-          {lastUpdate && <div className="text-[9px] font-bold text-slate-400 mt-2 uppercase tracking-widest">Last: {new Date(lastUpdate).toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'})}</div>}
+          <div className="text-[9px] font-bold text-slate-400 mt-2 uppercase tracking-widest">
+            Last: {safeTimeFormat(lastUpdate)}
+          </div>
         </div>
       </div>
     </div>
