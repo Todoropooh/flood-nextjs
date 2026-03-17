@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/db/connect";
 import WaterLog from "@/db/models/WaterLog";
-import Device from "@/db/models/Device";
+import Device from "@/db/models/Device"; // โฟลเดอร์ตรงตามที่คุณให้มา
 
-// ✨ ปิดระบบ Cache ของ Vercel เพื่อให้หน้าเว็บดึงข้อมูลสดใหม่เสมอเวลากดรีเฟรช!
+// ✨ ปิดระบบ Cache ของ Vercel เพื่อให้หน้าเว็บดึงข้อมูลสดใหม่เสมอ
 export const dynamic = 'force-dynamic';
 
 // 🌟 1. ฟังก์ชันส่ง LINE Messaging API
@@ -34,18 +34,19 @@ export async function POST(request: NextRequest) {
     const payload = await request.json(); 
     await connectDB();
 
-    // ✨ แก้ไขการดึงข้อมูล: รองรับทั้งชื่อตัวแปรเก่าและใหม่ที่ ESP32 ส่งมา
-    const currentLevel = payload.level !== undefined ? payload.level : (payload.water_level || 0);
-    const currentTemp = payload.temperature !== undefined ? payload.temperature : (payload.temp || 0);
-    const currentHumid = payload.air_humidity !== undefined ? payload.air_humidity : (payload.humid || payload.humidity || 0);
+    // 🛡️ บังคับแปลงเป็น Number และดักจับชื่อที่ ESP32 ส่งมา
+    // ESP32 ส่งมา: "level", "temperature", "air_humidity"
+    const currentLevel = Number(payload.level ?? payload.water_level ?? 0);
+    const currentTemp = Number(payload.temperature ?? payload.temp ?? 0);
+    const currentHumid = Number(payload.air_humidity ?? payload.humidity ?? payload.humid ?? 0);
 
-    // ก) อัปเดตข้อมูลลงตาราง Device และดึงค่าการตั้งค่าล่าสุดมาด้วย
+    // ก) อัปเดตข้อมูลลงตาราง Device (📌 ใช้ชื่อฟิลด์ 'humidity' ตาม Schema)
     const device = await Device.findOneAndUpdate(
       { mac: payload.mac },
       { 
         waterLevel: currentLevel,
-        temperature: currentTemp,    // ใช้ตัวแปรที่ดึงมาใหม่
-        humidity: currentHumid,      // ใช้ตัวแปรที่ดึงมาใหม่
+        temperature: currentTemp,
+        humidity: currentHumid,   
         lastPing: new Date() 
       },
       { new: true, upsert: false } 
@@ -56,19 +57,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Device not found" }, { status: 404 });
     }
 
-    // ข) บันทึกประวัติลงตาราง WaterLog
+    // ข) บันทึกประวัติลงตาราง WaterLog (📌 ใช้ชื่อฟิลด์ 'air_humidity' ตาม Schema)
+    // 🚨 เอาฟิลด์ status ออก เพราะใน WaterLogSchema ของคุณไม่มีฟิลด์นี้ (กัน Mongoose Error)
     const newLog = await WaterLog.create({
       mac: payload.mac,
       level: currentLevel,
-      temperature: currentTemp,      // ใช้ตัวแปรที่ดึงมาใหม่
-      air_humidity: currentHumid,    // ใช้ตัวแปรที่ดึงมาใหม่
-      status: currentLevel >= (device.criticalThreshold || 7) ? 'Critical' : (currentLevel >= (device.warningThreshold || 3) ? 'Warning' : 'Normal')
+      temperature: currentTemp,    
+      air_humidity: currentHumid,  
     });
 
     // ค) 🚨 จัดการแจ้งเตือน (Check Remote Control: isActive)
     if (device.isActive) {
       if (currentLevel >= (device.criticalThreshold || 7.0)) {
-        const alertMsg = `🚨 [วิกฤต] ${device.name}\n🌊 ระดับน้ำ: ${currentLevel.toFixed(1)} cm\n🌡️ ${currentTemp.toFixed(1)}°C | 💧 ${currentHumid}%\n📢 โปรดตรวจสอบพื้นที่โดยด่วน!`;
+        const alertMsg = `🚨 [วิกฤต] ${device.name}\n🌊 ระดับน้ำ: ${currentLevel.toFixed(1)} cm\n🌡️ ${currentTemp.toFixed(1)}°C | 💧 ${currentHumid.toFixed(1)}%\n📢 โปรดตรวจสอบพื้นที่โดยด่วน!`;
         await sendLineMessage(alertMsg);
       }
     }
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// 🌟 3. GET: ดึงข้อมูลประวัติ (คงเดิม)
+// 🌟 3. GET: ดึงข้อมูลประวัติ
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
