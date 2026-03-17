@@ -1,139 +1,128 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler } from 'chart.js';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js';
 import { Line } from 'react-chartjs-2';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 
-export default function WaterLevelChart({ 
-  data = [], 
-  isDark, 
+export default function WaterLevelChart({
+  data = [],
+  isDark,
   timeframe = 'day',
-  devices = [], 
-  selectedDeviceMac = 'ALL' 
-}: { 
-  data: any[], 
-  isDark: boolean, 
-  timeframe?: string,
-  devices?: any[],
-  selectedDeviceMac?: string
-}) {
+  devices = [],
+  selectedDeviceMac = 'ALL'
+}: any) {
 
-  const [viewMode, setViewMode] = useState<'ALL' | 'LEVEL' | 'TEMP' | 'HUMIDITY'>('ALL');
+  const [viewMode, setViewMode] = useState<'LEVEL' | 'TEMP' | 'HUMIDITY'>('LEVEL');
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => { setMounted(true); }, []);
-
-  const labels: string[] = [];
-  const now = new Date();
-
-  const safeDevices = Array.isArray(devices) ? devices : [];
-  const safeData = Array.isArray(data) ? data : [];
-
-  const activeDevices = selectedDeviceMac === 'ALL' 
-    ? (safeDevices.length > 0 ? safeDevices : [{ mac: 'ALL', name: 'โหนดจำลอง' }])
-    : safeDevices.filter(d => d?.mac === selectedDeviceMac);
-
-  const isOverview = activeDevices.length > 1 || selectedDeviceMac === 'ALL';
-
-  useEffect(() => {
-    if (isOverview && viewMode === 'ALL') setViewMode('LEVEL');
-  }, [isOverview, viewMode]);
+  useEffect(() => setMounted(true), []);
 
   if (!mounted) {
-    return (
-      <div className="flex flex-col h-full w-full">
-        <div className="flex-1 flex items-center justify-center bg-slate-100/50 rounded-2xl animate-pulse">
-          <span className="text-slate-400 text-sm">กำลังโหลดกราฟ...</span>
-        </div>
-      </div>
-    );
+    return <div className="h-[400px] flex items-center justify-center animate-pulse">Loading...</div>;
   }
 
-  const getItemDate = (item: any) => {
+  const now = new Date();
+  const labels: string[] = [];
+
+  const safeData = Array.isArray(data) ? data : [];
+  const safeDevices = Array.isArray(devices) ? devices : [];
+
+  const activeDevices =
+    selectedDeviceMac === 'ALL'
+      ? safeDevices
+      : safeDevices.filter((d: any) => d.mac === selectedDeviceMac);
+
+  const deviceData: any = {};
+
+  activeDevices.forEach((d: any) => {
+    deviceData[d.mac] = {
+      levels: [],
+      temps: [],
+      humidities: []
+    };
+  });
+
+  const getDate = (item: any) => {
     const d = new Date(item?.timestamp || item?.createdAt || item?.date);
     return isNaN(d.getTime()) ? new Date() : d;
   };
 
-  const deviceData: Record<string, any> = {};
-  activeDevices.forEach(d => {
-    if (d?.mac) deviceData[d.mac] = { levels: [], temps: [], humidities: [] };
-  });
-
   const processBucket = (label: string, matched: any[]) => {
     labels.push(label);
 
-    activeDevices.forEach(d => {
-      if (!d?.mac) return;
-
-      let logs = matched.filter(log =>
-        String(log?.mac || log?.device_id || '').toLowerCase() === String(d.mac).toLowerCase()
+    activeDevices.forEach((d: any) => {
+      const logs = matched.filter(
+        (log) =>
+          String(log?.mac || log?.device_id || '').toLowerCase() ===
+          String(d.mac).toLowerCase()
       );
 
-      if (logs.length === 0 && matched.length > 0) {
-        logs = [matched[matched.length - 1]];
-      }
-
-      if (logs.length > 0) {
-        const last = logs[logs.length - 1];
-
-        const level = Number(last?.water_level ?? last?.level ?? null);
-        const temp = Number(last?.temperature ?? last?.temp ?? null);
-        const humid = Number(last?.air_humidity ?? last?.humidity ?? null);
-
-        deviceData[d.mac].levels.push(isNaN(level) ? null : level);
-        deviceData[d.mac].temps.push(isNaN(temp) ? null : temp);
-        deviceData[d.mac].humidities.push(isNaN(humid) ? null : humid);
-
-      } else {
+      if (logs.length === 0) {
+        // ✅ แก้: ไม่มีข้อมูล = null (ไม่มั่ว)
         deviceData[d.mac].levels.push(null);
         deviceData[d.mac].temps.push(null);
         deviceData[d.mac].humidities.push(null);
+        return;
       }
+
+      const last = logs[logs.length - 1];
+
+      // ✅ แก้: ไม่เอา 0 มาทำกราฟดิ่ง
+      const level = Number(last?.water_level ?? last?.level ?? null);
+      const temp = Number(last?.temperature ?? last?.temp ?? null);
+      const humid = Number(last?.air_humidity ?? last?.humidity ?? null);
+
+      deviceData[d.mac].levels.push(level === 0 || isNaN(level) ? null : level);
+      deviceData[d.mac].temps.push(isNaN(temp) ? null : temp);
+      deviceData[d.mac].humidities.push(isNaN(humid) ? null : humid);
     });
   };
 
-  // ⏱️ Generate time buckets
-  if (timeframe === 'month') {
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-      const matched = safeData.filter(item => getItemDate(item).toDateString() === d.toDateString());
-      processBucket(d.getDate().toString(), matched);
-    }
-  } else {
-    for (let i = 23; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * 3600000);
-      const matched = safeData.filter(item => {
-        const it = getItemDate(item);
-        return it.getHours() === d.getHours() && it.toDateString() === d.toDateString();
-      });
-      processBucket(d.getHours() + ':00', matched);
-    }
+  // time loop
+  for (let i = 23; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 3600000);
+    const matched = safeData.filter((item) => {
+      const it = getDate(item);
+      return it.getHours() === d.getHours() && it.toDateString() === d.toDateString();
+    });
+
+    processBucket(d.getHours() + ':00', matched);
   }
 
   const datasets: any[] = [];
 
-  activeDevices.forEach((d, i) => {
-    if (!d?.mac) return;
+  activeDevices.forEach((d: any) => {
     const dat = deviceData[d.mac];
 
-    if (viewMode === 'LEVEL' || viewMode === 'ALL') {
+    if (viewMode === 'LEVEL') {
       datasets.push({
-        label: isOverview ? `${d.name} (น้ำ)` : 'ระดับน้ำ (cm)',
+        label: 'ระดับน้ำ',
         data: dat.levels,
         borderColor: '#3b82f6',
-        backgroundColor: 'rgba(59,130,246,0.1)',
+        backgroundColor: 'rgba(59,130,246,0.15)',
         borderWidth: 3,
-        tension: 0.4,
+        pointRadius: 3,
+        pointHoverRadius: 6,
+        tension: 0.45,
         cubicInterpolationMode: 'monotone',
-        spanGaps: true,
         fill: true,
+        spanGaps: true,
         yAxisID: 'y'
       });
     }
 
-    if (viewMode === 'TEMP' || viewMode === 'ALL') {
+    if (viewMode === 'TEMP') {
       datasets.push({
         label: 'อุณหภูมิ',
         data: dat.temps,
@@ -145,7 +134,7 @@ export default function WaterLevelChart({
       });
     }
 
-    if (viewMode === 'HUMIDITY' || viewMode === 'ALL') {
+    if (viewMode === 'HUMIDITY') {
       datasets.push({
         label: 'ความชื้น',
         data: dat.humidities,
@@ -158,30 +147,24 @@ export default function WaterLevelChart({
     }
   });
 
-  // 🔥 AUTO SCALE (แก้กราฟจม)
+  // ✅ auto scale
   const getMinMax = (arr: any[]) => {
-    const clean = arr.filter(v => v !== null && !isNaN(v));
+    const clean = arr.filter((v) => v !== null);
     if (clean.length === 0) return { min: 0, max: 10 };
-    return {
-      min: Math.min(...clean),
-      max: Math.max(...clean)
-    };
+    return { min: Math.min(...clean), max: Math.max(...clean) };
   };
 
-  const levelData = datasets.filter(d => d.yAxisID === 'y').flatMap(d => d.data);
-  const tempData = datasets.filter(d => d.yAxisID === 'y1').flatMap(d => d.data);
-  const humidData = datasets.filter(d => d.yAxisID === 'y2').flatMap(d => d.data);
+  const level = getMinMax(datasets.flatMap((d) => d.data));
 
-  const level = getMinMax(levelData);
-  const temp = getMinMax(tempData);
-  const humid = getMinMax(humidData);
-
-  const options = {
+  const options: any = {
     responsive: true,
     maintainAspectRatio: false,
-    layout: {
-      padding: { top: 10, bottom: 10 }
+
+    animation: {
+      duration: 800,
+      easing: 'easeOutQuart'
     },
+
     plugins: {
       legend: {
         labels: {
@@ -189,46 +172,30 @@ export default function WaterLevelChart({
         }
       }
     },
+
     scales: {
       x: {
-        ticks: { color: '#64748b' }
+        grid: { color: 'rgba(0,0,0,0.05)' }
       },
 
       y: {
-        display: viewMode === 'LEVEL' || viewMode === 'ALL',
-        position: 'left',
         beginAtZero: false,
         suggestedMin: level.min - 1,
         suggestedMax: level.max + 1
-      },
-
-      y1: {
-        display: viewMode === 'TEMP' || viewMode === 'ALL',
-        position: 'right',
-        grid: { drawOnChartArea: false },
-        suggestedMin: temp.min - 2,
-        suggestedMax: temp.max + 2
-      },
-
-      y2: {
-        display: viewMode === 'HUMIDITY' || viewMode === 'ALL',
-        position: 'right',
-        grid: { drawOnChartArea: false },
-        suggestedMin: humid.min - 5,
-        suggestedMax: humid.max + 5
       }
     }
   };
 
   return (
-    <div className="flex flex-col h-full w-full">
-      <div className="flex justify-center gap-2 mb-4">
-        <button onClick={() => setViewMode('LEVEL')} className="px-3 py-1 bg-blue-500 text-white rounded-full text-xs">น้ำ</button>
-        <button onClick={() => setViewMode('TEMP')} className="px-3 py-1 bg-orange-500 text-white rounded-full text-xs">อุณหภูมิ</button>
-        <button onClick={() => setViewMode('HUMIDITY')} className="px-3 py-1 bg-cyan-500 text-white rounded-full text-xs">ความชื้น</button>
+    <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg p-6 border border-white/30">
+
+      <div className="flex justify-center gap-3 mb-4">
+        <button onClick={() => setViewMode('LEVEL')} className="px-4 py-1 bg-blue-500 text-white rounded-full text-xs">น้ำ</button>
+        <button onClick={() => setViewMode('TEMP')} className="px-4 py-1 bg-orange-500 text-white rounded-full text-xs">อุณหภูมิ</button>
+        <button onClick={() => setViewMode('HUMIDITY')} className="px-4 py-1 bg-cyan-500 text-white rounded-full text-xs">ความชื้น</button>
       </div>
 
-      <div className="flex-1 min-h-[400px]">
+      <div className="h-[400px]">
         {/* @ts-ignore */}
         <Line data={{ labels, datasets }} options={options} />
       </div>
