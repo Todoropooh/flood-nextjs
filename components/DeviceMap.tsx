@@ -22,7 +22,7 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
   
   const tileUrl = isDark 
     ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-    : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+    : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
 
   const defaultCenter: [number, number] = [14.8818, 103.4936];
   const center = devices.length > 0 && devices[0].lat && devices[0].lng 
@@ -30,17 +30,20 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
     : defaultCenter;
 
   const createCustomIcon = (device: any) => {
-    // ✅ 1. รับค่าระยะเซนเซอร์ (ถ้าไม่มีให้ถือว่าว่าง = 70)
-    const rawDist = Number(device.waterLevel ?? device.level ?? 70);
+    // ✅ 1. รับค่าระยะเซนเซอร์ (ถ้าไม่มีข้อมูลให้ถือว่าห่าง 95 คือน้ำแห้ง)
+    const rawDist = Number(device.waterLevel ?? device.level ?? 95);
     
-    // ✅ 2. คำนวณความสูงน้ำ (ติดตั้ง 70 ซม. กล่องสูง 20 ซม.)
-    let wl = 70 - rawDist;
+    // ✅ 2. คำนวณความสูงน้ำจริง (สูตร 95cm ของเรา)
+    let wl = 95 - rawDist;
+    
+    // จัดการค่ารบกวน (Noise)
+    if (rawDist <= 0.5 || rawDist > 85) wl = 0; 
     if (wl < 0) wl = 0;
     if (wl > 20) wl = 20;
     
-    // ✅ 3. เช็คเงื่อนไขสีหมุด (วิกฤต >= 17, เตือน >= 10)
-    const isCritical = wl >= 17;
-    const isWarning = wl >= 10;
+    // ✅ 3. เช็คเงื่อนไขสีหมุด (วิกฤต > 14 [แดง], เตือน > 7 [ส้ม], ปกติ [เขียว])
+    const isCritical = wl > 14.0;
+    const isWarning = wl > 7.0;
     
     const dotColor = isCritical ? 'bg-red-500' : isWarning ? 'bg-orange-500' : 'bg-emerald-500';
     const textColor = isCritical ? 'text-red-600 dark:text-red-400' : isWarning ? 'text-orange-600 dark:text-orange-400' : 'text-emerald-600 dark:text-emerald-400';
@@ -48,7 +51,7 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
 
     const htmlString = `
       <div class="relative flex flex-col items-center -mt-8 cursor-pointer hover:-translate-y-1 transition-transform group z-50">
-        <div class="bg-white/80 dark:bg-[#151b2b]/90 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-lg border border-white/50 dark:border-white/10 mb-1.5 flex flex-col items-center whitespace-nowrap group-hover:scale-110 transition-transform">
+        <div class="bg-white/90 dark:bg-[#151b2b]/95 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-lg border border-white/50 dark:border-white/10 mb-1.5 flex flex-col items-center whitespace-nowrap group-hover:scale-110 transition-transform">
           <span class="text-[10px] font-bold text-slate-800 dark:text-white uppercase tracking-widest">${device.name}</span>
           <span class="text-[11px] font-black ${textColor}">${wl.toFixed(1)} cm</span>
         </div>
@@ -70,7 +73,7 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
   return (
     <MapContainer 
       center={center as L.LatLngExpression} 
-      zoom={11} 
+      zoom={14} 
       className="w-full h-full rounded-[2rem] z-0"
       zoomControl={false} 
     >
@@ -89,8 +92,9 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
            >
              <Popup className="custom-popup">
                <div className="text-center p-1 font-sans">
-                 <h3 className="font-bold text-sm text-slate-800">${device.name}</h3>
-                 <p className="text-[10px] text-slate-500 font-mono mt-1 uppercase">${device.mac}</p>
+                 <h3 className="font-bold text-sm text-slate-800">{device.name}</h3>
+                 <p className="text-[10px] text-slate-500 font-mono mt-1 uppercase">{device.mac}</p>
+                 <p className="text-[11px] font-bold mt-1 text-blue-600">สถานะ: ปกติ</p>
                </div>
              </Popup>
            </Marker>
