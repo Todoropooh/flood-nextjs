@@ -34,7 +34,7 @@ export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   const [timeframe, setTimeframe] = useState('day');
   
-  // ✅ ระบบแจ้งเตือน
+  // ระบบแจ้งเตือน
   const [showPushNoti, setShowPushNoti] = useState(false);
   const [lastAlertState, setLastAlertState] = useState<'NONE' | 'SHOWN'>('NONE');
 
@@ -93,20 +93,19 @@ export default function Home() {
   // สูตรคำนวณระดับน้ำ
   let waterInTank = sensorHeight - sensorDist;
 
-  // 🛡️ Zero-Point Fix: ถ้าใกล้พื้น (>63) หรือ เซนเซอร์เอ๋อ (<=0.5) ให้เป็น 0 (ปลอดภัย)
+  // 🛡️ Zero-Point Fix
   if (sensorDist <= 0.5 || sensorDist > 63) {
     waterInTank = 0;
   }
 
-  // ล็อกค่าให้อยู่ในช่วง 0-20 cm
   if (waterInTank > tankMaxHeight) waterInTank = tankMaxHeight;
   if (waterInTank < 0) waterInTank = 0;
 
-  // ข้อมูลอุณหภูมิ/ความชื้น
+  // ✅ แก้ไข Syntax Error บรรทัด 106-107 (ใช้ ?? อย่างเดียวเพื่อให้ Build ผ่าน)
   const currentTemp = Number(latestLog?.temperature ?? currentDevice?.temperature ?? 0);
-  const currentHumid = Number(latestLog?.humidity || latestLog?.air_humidity ?? currentDevice?.humidity ?? 0);
+  const currentHumid = Number(latestLog?.humidity ?? latestLog?.air_humidity ?? currentDevice?.humidity ?? 0);
 
-  // การจัดการแจ้งเตือน Pop-up (เด้งเมื่อพ้น 7 cm)
+  // การจัดการแจ้งเตือน Pop-up
   if (waterInTank > 7 && lastAlertState === 'NONE') {
     setShowPushNoti(true);
     setLastAlertState('SHOWN');
@@ -115,7 +114,7 @@ export default function Home() {
     setLastAlertState('NONE');
   }
 
-  // ✅ เกณฑ์แจ้งเตือน 7 / 14 / 20
+  // เกณฑ์แจ้งเตือน 7 / 14 / 20
   const getStatusInfo = (w: number) => {
     if (w > 14) return { label: "🔴 อันตราย", color: "text-red-500", bg: "bg-red-500" };
     if (w > 7) return { label: "🟡 เฝ้าระวัง", color: "text-orange-500", bg: "bg-orange-500" };
@@ -127,7 +126,6 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 relative transition-colors">
       
-      {/* แจ้งเตือน Pop-up */}
       {showPushNoti && waterInTank > 7 && (
         <div className="fixed bottom-8 right-8 z-[200] animate-bounce">
           <div className={`p-4 rounded-2xl flex items-center gap-4 text-white shadow-2xl border-2 border-white/20 ${status.bg}`}>
@@ -141,21 +139,20 @@ export default function Home() {
         </div>
       )}
 
-      {/* Header */}
       <header className="sticky top-0 z-[100] w-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 md:px-8 py-4">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-4">
             <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg"><Waves size={24}/></div>
             <div className="relative">
               <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="flex items-center gap-2 bg-white dark:bg-slate-800 px-4 py-2 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 font-bold text-sm uppercase transition-all active:scale-95">
-                {selectedDeviceMac === 'ALL' ? '🌍 Overview' : `📍 ${currentDevice?.name || 'Device'}`}
+                {selectedDeviceMac === 'ALL' ? '🌍 Overview' : `📍 Device`}
                 <ChevronDown size={16} />
               </button>
               {isDropdownOpen && (
                 <div className="absolute top-full left-0 mt-2 w-56 bg-white dark:bg-slate-900 shadow-2xl rounded-2xl border border-slate-200 dark:border-slate-800 z-50 p-2 overflow-hidden">
                   <button onClick={() => { setSelectedDeviceMac('ALL'); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-xs font-bold uppercase transition-colors">🌍 Overview</button>
                   {devices.map((d: any) => (
-                    <button key={d.mac} onClick={() => { setSelectedDeviceMac(d.mac); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-xs font-bold uppercase transition-colors">📍 {d.name}</button>
+                    <button key={d.mac} onClick={() => { setSelectedDeviceMac(d.mac); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-xs font-bold uppercase transition-colors">📍 {d.name || d.mac}</button>
                   ))}
                 </div>
               )}
@@ -170,7 +167,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard label="ระดับน้ำ" val={waterInTank.toFixed(1)} unit="cm" icon={<Waves/>} color={status.color} />
@@ -203,7 +199,7 @@ export default function Home() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-8 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="lg:col-span-8 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden text-slate-800 dark:text-slate-100">
             <RecentLogs logs={displayLogs} />
           </div>
           <div className="lg:col-span-4 bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center justify-center min-h-[350px]">
