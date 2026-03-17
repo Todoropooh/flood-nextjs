@@ -25,7 +25,7 @@ export default function AdminPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false); 
   const [isExportModalOpen, setIsExportModalOpen] = useState(false); 
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false); // 🌟 State สำหรับสวิตช์
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [modalAnim, setModalAnim] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,7 +34,7 @@ export default function AdminPage() {
   const [exportDays, setExportDays] = useState<number>(30); 
   const [showUI, setShowUI] = useState(false);
 
-  // 🌟 State สำหรับเก็บค่าสวิตช์
+  // State สำหรับเก็บค่าสวิตช์
   const [systemSettings, setSystemSettings] = useState({ systemOn: true, buzzerOn: true });
 
   const defaultDevice = { 
@@ -51,11 +51,10 @@ export default function AdminPage() {
   useEffect(() => { 
     setIsMounted(true); 
     fetchData();
-    fetchSettings(); // 🌟 โหลดค่าสวิตช์ตอนเปิดหน้า
+    fetchSettings();
     setTimeout(() => setShowUI(true), 100);
   }, []);
 
-  // 🌟 ดึงค่าตั้งค่าจาก API
   const fetchSettings = async () => {
     try {
       const res = await fetch('/api/settings');
@@ -75,34 +74,88 @@ export default function AdminPage() {
     } catch (e) { console.error(e); }
   };
 
+  // 🌟 ระบบ Export PDF ที่อัปเกรดแล้ว (ดึงข้อมูลย้อนหลังแบบละเอียดยิบ)
   const executeExportPDF = async () => {
     setIsExporting(true);
-    const doc = new jsPDF('p', 'mm', 'a4');
-    const now = new Date().toLocaleString('th-TH');
+    try {
+      const doc = new jsPDF('p', 'mm', 'a4');
+      const now = new Date().toLocaleString('th-TH');
 
-    if (activeTab === 'users') {
-      doc.setFillColor(15, 23, 42); 
-      doc.rect(0, 0, 210, 40, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(22);
-      doc.text('FLOOD MONITORING SYSTEM', 14, 20);
-      doc.text(`REPORT: USER MANAGEMENT`, 14, 28);
-      autoTable(doc, {
-        startY: 55,
-        head: [['#', 'Full Name', 'Username', 'Role', 'Contact']],
-        body: users.map((u, i) => [i + 1, `${u.firstname} ${u.lastname}`, u.username, u.role.toUpperCase(), u.phone || '-']),
-        theme: 'grid'
-      });
-      doc.save(`User_Report_${new Date().getTime()}.pdf`);
-    } else {
-      doc.setFontSize(16); doc.text('FLOODPRO ANALYTICS REPORT', 14, 20);
-      autoTable(doc, {
-        startY: 50,
-        head: [['Date/Time', 'Node', 'Level (cm)', 'Temp (C)', 'Humid (%)']],
-        body: devices.map(d => [now, d.name, (d.waterLevel || 0).toFixed(2), (d.temperature || 0).toFixed(1), (d.humidity || 0).toFixed(0)]),
-        theme: 'grid'
-      });
-      doc.save(`FloodReport_ALL_${new Date().getTime()}.pdf`);
+      if (activeTab === 'users') {
+        doc.setFillColor(15, 23, 42); 
+        doc.rect(0, 0, 210, 40, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(22);
+        doc.text('FLOOD MONITORING SYSTEM', 14, 20);
+        doc.text(`REPORT: USER MANAGEMENT`, 14, 28);
+        autoTable(doc, {
+          startY: 55,
+          head: [['#', 'Full Name', 'Username', 'Role', 'Contact']],
+          body: users.map((u, i) => [i + 1, `${u.firstname} ${u.lastname}`, u.username, u.role.toUpperCase(), u.phone || '-']),
+          theme: 'grid'
+        });
+        doc.save(`User_Report_${new Date().getTime()}.pdf`);
+      } else {
+        // 1. ดึงข้อมูล Logs จาก API
+        const res = await fetch(`/api/flood?timeframe=month`);
+        let logs = [];
+        if (res.ok) logs = await res.json();
+
+        // 2. กรองข้อมูลเฉพาะช่วงเวลาที่เลือก
+        const cutoffTime = Date.now() - (exportDays * 24 * 60 * 60 * 1000);
+        const filteredLogs = logs.filter((l: any) => new Date(l.createdAt || l.timestamp).getTime() > cutoffTime);
+
+        // 3. ตกแต่งหัวกระดาษ PDF
+        doc.setFillColor(41, 128, 185); 
+        doc.rect(0, 0, 210, 35, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(18);
+        doc.setFont('helvetica', 'bold');
+        doc.text('FLOODPRO DETAILED ANALYTICS', 14, 18);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Generated: ${now} | Period: Last ${exportDays} Days`, 14, 26);
+        doc.text(`Total Records: ${filteredLogs.length} logs`, 14, 31);
+
+        // 4. เตรียมข้อมูลลงตาราง
+        const tableData = filteredLogs.map((l: any) => {
+          const dName = devices.find(d => d.mac === l.mac || d.device_id === l.device_id)?.name || l.mac || 'Unknown';
+          
+          // คำนวณระดับน้ำ 95 cm - ระยะห่าง (Zero-Point Fix)
+          const sensorDist = Number(l.level) || 95;
+          let waterLevel = 95 - sensorDist;
+          if (sensorDist <= 0.5 || sensorDist > 80) waterLevel = 0;
+          if (waterLevel < 0) waterLevel = 0;
+          if (waterLevel > 20) waterLevel = 20;
+
+          const dateStr = new Date(l.createdAt || l.timestamp).toLocaleString('th-TH');
+
+          return [
+            dateStr,
+            dName,
+            waterLevel.toFixed(2),
+            (Number(l.temperature) || 0).toFixed(1),
+            (Number(l.humidity || l.air_humidity) || 0).toFixed(0),
+            (Number(l.signal) || 0).toString()
+          ];
+        });
+
+        // 5. สร้างตารางแบบ Auto-Paging
+        autoTable(doc, {
+          startY: 45,
+          head: [['Date/Time', 'Node Name', 'Water (cm)', 'Temp (C)', 'Humid (%)', 'SIM Signal']],
+          body: tableData,
+          theme: 'striped',
+          headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
+          styles: { fontSize: 8, cellPadding: 3 },
+          alternateRowStyles: { fillColor: [245, 247, 250] }
+        });
+
+        doc.save(`FloodReport_Detailed_${exportDays}Days_${new Date().getTime()}.pdf`);
+      }
+    } catch (error) {
+      console.error("Export Error:", error);
+      alert("เกิดข้อผิดพลาดในการสร้าง PDF");
     }
     closeModal();
     setIsExporting(false);
@@ -159,7 +212,6 @@ export default function AdminPage() {
     if (res.ok) fetchData();
   };
 
-  // 🌟 ฟังก์ชันจัดการสวิตช์
   const handleToggleSettings = async (type: 'system' | 'buzzer') => {
     const newValue = type === 'system' ? !systemSettings.systemOn : !systemSettings.buzzerOn;
     
@@ -227,7 +279,6 @@ export default function AdminPage() {
                 </div>
                 <button onClick={() => { setIsExportModalOpen(true); setTimeout(()=>setModalAnim(true),10); }} className="p-2 bg-white/50 dark:bg-white/10 text-emerald-600 border border-white/50 rounded-xl shadow-sm"><FileText size={16} /></button>
                 
-                {/* 🌟 ปุ่มตั้งค่า Settings (รูปฟันเฟือง) */}
                 <button onClick={() => { setIsSettingsModalOpen(true); setTimeout(()=>setModalAnim(true),10); }} className="p-2 bg-white/50 dark:bg-white/10 text-slate-600 dark:text-slate-300 border border-white/50 rounded-xl shadow-sm hover:text-blue-500"><Settings size={16} /></button>
                 
                 <button onClick={() => { if(activeTab==='nodes') {setEditingId(null); setIsAddModalOpen(true);} else {setEditingId(null); setUserFormData(defaultUser); setIsUserModalOpen(true);} setTimeout(()=>setModalAnim(true),10); }} className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-500 transition-all shadow-md min-w-[36px] flex items-center justify-center"><Plus size={18}/></button>
@@ -310,7 +361,6 @@ export default function AdminPage() {
         isSaving={isSaving}
       />
 
-      {/* 🌟 USER MODAL ที่ถูกต้อง */}
       {isUserModalOpen && (
         <div className={`fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300 ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
           <div className={`bg-white/80 dark:bg-[#1e2330]/80 backdrop-blur-2xl rounded-3xl shadow-2xl w-full max-w-md border border-white/50 transform transition-all duration-300 ${modalAnim ? 'scale-100' : 'scale-95'} overflow-hidden`}>
@@ -356,7 +406,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* 🌟 SETTINGS MODAL (Device Management) - หน้าต่างที่พี่แคปรูปมา */}
+      {/* 🌟 SETTINGS MODAL (Device Management) */}
       {isSettingsModalOpen && (
         <div className={`fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300 ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
           <div className={`bg-white dark:bg-[#1e2330] rounded-3xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800 transform transition-all duration-300 ${modalAnim ? 'scale-100' : 'scale-95'} overflow-hidden p-6`}>
