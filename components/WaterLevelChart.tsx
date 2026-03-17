@@ -30,7 +30,6 @@ export default function WaterLevelChart({
   const chartData = useMemo(() => {
     if (!mounted) return { labels: [], datasets: [] };
 
-    // --- 1. สร้าง Labels แกน X (เวลา) ---
     const labels: string[] = [];
     const now = new Date();
     let steps = timeframe === 'day' ? 24 : timeframe === 'week' ? 7 : 30;
@@ -46,55 +45,63 @@ export default function WaterLevelChart({
     }
 
     const datasets: any[] = [];
-    const colors = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
+    const nodeColors = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
 
-    // --- 2. วนลูปสร้างเส้นแยกตามอุปกรณ์ (Node) ---
     devices.forEach((dev: any, idx: number) => {
-      // กรองตาม MAC ที่เลือก (ถ้าเลือก ALL จะดึงทุก Node)
       if (selectedDeviceMac !== 'ALL' && dev.mac !== selectedDeviceMac) return;
 
       const deviceLogs = data.filter((l: any) => l.mac === dev.mac);
-      const nodeColor = colors[idx % colors.length];
+      const mainColor = nodeColors[idx % nodeColors.length];
 
-      // --- สร้างข้อมูลระดับน้ำ (LEVEL) ---
+      // 🌊 ระดับน้ำ
       if (viewMode === 'ALL_METRICS' || viewMode === 'LEVEL') {
         datasets.push({
-          label: `🌊 ${dev.name} - ระดับน้ำ (cm)`,
+          label: `🌊 ${dev.name} - น้ำ (cm)`,
           data: labels.map((_, index) => {
             if (deviceLogs.length === 0) return null;
-            // หา Log ที่เวลาใกล้เคียงที่สุดในช่องนั้นๆ
-            const dataIndex = Math.floor((index / labels.length) * deviceLogs.length);
-            const log = deviceLogs[dataIndex];
-            
-            // ✅ ใช้สูตรเดียวกับการ์ด: 95 - ระยะห่าง (INSTALL_HEIGHT = 95)
-            const rawDist = Number(log?.level || log?.water_level || 0);
-            if (rawDist <= 0.5 || rawDist > 80) return 0; // ปัดเป็น 0 ตาม Logic พี่
-            let waterInTank = 95 - rawDist; 
-            if (waterInTank < 0) waterInTank = 0;
-            if (waterInTank > 20) waterInTank = 20;
-            return waterInTank;
+            const log = deviceLogs[Math.floor((index / labels.length) * deviceLogs.length)];
+            const raw = Number(log?.level || 0);
+            let val = 95 - raw;
+            if (raw <= 0.5 || raw > 80) val = 0;
+            return val < 0 ? 0 : (val > 20 ? 20 : val);
           }),
-          borderColor: nodeColor,
-          backgroundColor: nodeColor + '15',
+          borderColor: mainColor,
+          backgroundColor: mainColor + '15',
           yAxisID: 'y',
           tension: 0.4,
-          fill: viewMode === 'LEVEL', 
           spanGaps: true
         });
       }
 
-      // --- สร้างข้อมูลอุณหภูมิ (TEMP) ---
+      // 🌡️ อุณหภูมิ
       if (viewMode === 'ALL_METRICS' || viewMode === 'TEMP') {
         datasets.push({
-          label: `🌡️ ${dev.name} - อุณหภูมิ (°C)`,
+          label: `🌡️ ${dev.name} - Temp (°C)`,
           data: labels.map((_, index) => {
             if (deviceLogs.length === 0) return null;
-            const dataIndex = Math.floor((index / labels.length) * deviceLogs.length);
-            return Number(deviceLogs[dataIndex]?.temperature) || null;
+            const log = deviceLogs[Math.floor((index / labels.length) * deviceLogs.length)];
+            return Number(log?.temperature) || null;
           }),
           borderColor: '#f97316',
           yAxisID: 'y1',
-          borderDash: [5, 5], 
+          borderDash: viewMode === 'ALL_METRICS' ? [5, 5] : [],
+          tension: 0.4,
+          spanGaps: true
+        });
+      }
+
+      // 💧 ความชื้น (เอากลับมาแล้วครับ!)
+      if (viewMode === 'ALL_METRICS' || viewMode === 'HUMIDITY') {
+        datasets.push({
+          label: `💧 ${dev.name} - Humid (%)`,
+          data: labels.map((_, index) => {
+            if (deviceLogs.length === 0) return null;
+            const log = deviceLogs[Math.floor((index / labels.length) * deviceLogs.length)];
+            return Number(log?.air_humidity || log?.humidity) || null;
+          }),
+          borderColor: '#06b6d4',
+          yAxisID: 'y2',
+          borderDash: viewMode === 'ALL_METRICS' ? [2, 2] : [],
           tension: 0.4,
           spanGaps: true
         });
@@ -108,36 +115,25 @@ export default function WaterLevelChart({
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { display: true, position: 'top', labels: { color: isDark ? '#cbd5e1' : '#475569', font: { size: 10, weight: 'bold' } } },
-      tooltip: { mode: 'index', intersect: false }
+      legend: { display: true, position: 'top', labels: { color: isDark ? '#cbd5e1' : '#475569', font: { size: 9 } } },
     },
     scales: {
       x: { ticks: { color: isDark ? '#64748b' : '#94a3b8', font: { size: 10 } }, grid: { display: false } },
-      y: { 
-        display: viewMode === 'ALL_METRICS' || viewMode === 'LEVEL',
-        position: 'left', min: 0, max: 25,
-        ticks: { color: '#3b82f6' },
-        grid: { color: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' } 
-      },
-      y1: { 
-        display: viewMode === 'ALL_METRICS' || viewMode === 'TEMP',
-        position: 'right', min: 10, max: 50,
-        ticks: { color: '#f97316' },
-        grid: { drawOnChartArea: false } 
-      }
+      y: { display: viewMode !== 'TEMP' && viewMode !== 'HUMIDITY', position: 'left', min: 0, max: 25, ticks: { color: '#3b82f6' } },
+      y1: { display: viewMode === 'ALL_METRICS' || viewMode === 'TEMP', position: 'right', min: 10, max: 50, ticks: { color: '#f97316' }, grid: { display: false } },
+      y2: { display: viewMode === 'ALL_METRICS' || viewMode === 'HUMIDITY', position: 'right', min: 0, max: 100, ticks: { color: '#06b6d4' }, grid: { display: false } }
     }
   };
 
   return (
     <div className="w-full h-full flex flex-col p-1">
-      <div className="flex flex-wrap gap-2 mb-6">
-        <button onClick={() => setViewMode('ALL_METRICS')} className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase transition-all ${viewMode === 'ALL_METRICS' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700'}`}>📊 ทั้งหมด</button>
-        <button onClick={() => setViewMode('LEVEL')} className={`px-4 py-2 rounded-xl text-[11px] font-bold transition-all ${viewMode === 'LEVEL' ? 'bg-blue-500 text-white' : 'bg-blue-50 text-blue-600'}`}>🌊 ระดับน้ำ</button>
-        <button onClick={() => setViewMode('TEMP')} className={`px-4 py-2 rounded-xl text-[11px] font-bold transition-all ${viewMode === 'TEMP' ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-600'}`}>🌡️ อุณหภูมิ</button>
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button onClick={() => setViewMode('ALL_METRICS')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold ${viewMode === 'ALL_METRICS' ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 border'}`}>📊 ทั้งหมด</button>
+        <button onClick={() => setViewMode('LEVEL')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold ${viewMode === 'LEVEL' ? 'bg-blue-500 text-white' : 'bg-blue-50 text-blue-600'}`}>🌊 น้ำ</button>
+        <button onClick={() => setViewMode('TEMP')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold ${viewMode === 'TEMP' ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-600'}`}>🌡️ Temp</button>
+        <button onClick={() => setViewMode('HUMIDITY')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold ${viewMode === 'HUMIDITY' ? 'bg-cyan-500 text-white' : 'bg-cyan-50 text-cyan-600'}`}>💧 Humid</button>
       </div>
-      <div className="flex-grow min-h-[350px] relative">
-        <Line data={chartData} options={options} />
-      </div>
+      <div className="flex-grow min-h-[350px]"><Line data={chartData} options={options} /></div>
     </div>
   );
 }
