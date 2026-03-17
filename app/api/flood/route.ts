@@ -5,6 +5,7 @@ import Device from "@/db/models/Device";
 
 export const dynamic = 'force-dynamic';
 
+// --- ฟังก์ชันส่ง LINE (เหมือนเดิม) ---
 async function sendLineMessage(message: string) {
   const ACCESS_TOKEN = "JSP4AFcQD0fSIwxGBIQXT+W2h/sD3wcdPUaLPu5I4znODmfu9l1qLVMgP328d/CZbBD8vRxfgv0LMwtc5Hn3MnQEovNDRLejZJ/VstvpNgfi98Kv/RXYQUQMbgg4TEbDeii03sBTNE4L9hkwS7tV/wdB04t89/1O/w1cDnyilFU="; 
   const USER_ID = "Ub9d815d4781936f90560a1c8f243d859"; 
@@ -17,6 +18,7 @@ async function sendLineMessage(message: string) {
   } catch (error) { console.error("❌ LINE Error:", error); }
 }
 
+// --- บันทึกข้อมูลจาก ESP32 ---
 export async function POST(request: NextRequest) {
   try {
     const payload = await request.json(); 
@@ -34,7 +36,6 @@ export async function POST(request: NextRequest) {
 
     if (!device) return NextResponse.json({ error: "Device not found" }, { status: 404 });
 
-    // บันทึกลง WaterLog (ใช้ชื่อ air_humidity ตาม Schema พี่)
     await WaterLog.create({
       mac: payload.mac,
       level: currentLevel,
@@ -51,10 +52,32 @@ export async function POST(request: NextRequest) {
   } catch (error: any) { return NextResponse.json({ error: error.message }, { status: 500 }); }
 }
 
+// --- ดึงข้อมูลย้อนหลังตาม Timeframe (Day/Week/Month) ---
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
-    const logs = await WaterLog.find({}).sort({ createdAt: -1 }).limit(100);
-    return NextResponse.json(logs.reverse());
-  } catch (error: any) { return NextResponse.json({ error: error.message }, { status: 500 }); }
+    
+    // ดึงค่าจาก Query String เช่น /api/flood?timeframe=week
+    const { searchParams } = new URL(request.url);
+    const timeframe = searchParams.get('timeframe') || 'day';
+
+    // คำนวณช่วงเวลาย้อนหลัง
+    let startDate = new Date();
+    if (timeframe === 'day') {
+      startDate.setHours(startDate.getHours() - 24);
+    } else if (timeframe === 'week') {
+      startDate.setDate(startDate.getDate() - 7);
+    } else if (timeframe === 'month') {
+      startDate.setMonth(startDate.getMonth() - 1);
+    }
+
+    // กรองข้อมูลตามเงื่อนไขเวลา
+    const logs = await WaterLog.find({
+      createdAt: { $gte: startDate }
+    }).sort({ createdAt: 1 }); // เรียงจากเก่าไปใหม่เพื่อให้กราฟวาดสวยๆ
+
+    return NextResponse.json(logs);
+  } catch (error: any) { 
+    return NextResponse.json({ error: error.message }, { status: 500 }); 
+  }
 }
