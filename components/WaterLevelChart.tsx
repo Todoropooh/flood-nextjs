@@ -21,112 +21,148 @@ export default function WaterLevelChart({
   devices = [],
   selectedDeviceMac = 'ALL'
 }: any) {
-  const [viewMode, setViewMode] = useState<'LEVEL' | 'TEMP' | 'HUMIDITY'>('LEVEL');
+  // เปลี่ยน viewMode ให้รองรับ 'ALL_METRICS' (แสดงทุกอย่างพร้อมกัน)
+  const [viewMode, setViewMode] = useState<'LEVEL' | 'TEMP' | 'HUMIDITY' | 'ALL_METRICS'>('ALL_METRICS');
   const [mounted, setMounted] = useState(false);
 
-  // ป้องกัน Hydration Error และ Client-side Exception
   useEffect(() => {
     setMounted(true);
   }, []);
 
   const chartData = useMemo(() => {
-    if (!mounted || !Array.isArray(data) || data.length === 0) {
-      return { labels: [], datasets: [] };
-    }
+    if (!mounted || !Array.isArray(data) || data.length === 0) return { labels: [], datasets: [] };
 
-    // 1. กรองข้อมูล
+    // 1. กรองข้อมูลตามเครื่องที่เลือก
     const filteredData = selectedDeviceMac === 'ALL' 
       ? data 
       : data.filter((item: any) => String(item?.mac || '').toLowerCase() === String(selectedDeviceMac).toLowerCase());
 
     if (filteredData.length === 0) return { labels: [], datasets: [] };
 
-    // 2. สร้าง Labels (จำกัดไม่ให้เยอะเกินไปจนเบราว์เซอร์ค้าง)
-    const labels = filteredData.map((item: any) => {
+    // 2. สร้าง Labels (เวลา) เอาแค่ 30 จุดล่าสุดเพื่อให้กราฟไม่อัดแน่นเกินไป
+    const recentData = filteredData.slice(-30);
+    const labels = recentData.map((item: any) => {
       const d = new Date(item.createdAt || item.timestamp);
       return d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-    }).slice(-50); // เอาแค่ 50 จุดล่าสุดพอ
-
-    // 3. แยกเส้นตามเครื่อง
-    const macGroups: any = {};
-    filteredData.slice(-50).forEach((item: any) => {
-      if (!macGroups[item.mac]) macGroups[item.mac] = [];
-      macGroups[item.mac].push(item);
     });
 
-    const datasets = Object.keys(macGroups).map((mac, index) => {
-      const deviceName = devices.find((d: any) => d.mac === mac)?.name || 'Device ' + (index + 1);
-      const colorList = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
-      const color = colorList[index % colorList.length];
-
-      return {
-        label: `${viewMode === 'LEVEL' ? 'ระดับน้ำ' : viewMode === 'TEMP' ? 'อุณหภูมิ' : 'ความชื้น'} (${deviceName})`,
-        data: macGroups[mac].map((item: any) => {
-          if (viewMode === 'LEVEL') return Number(item.level) || 0;
-          if (viewMode === 'TEMP') return Number(item.temperature) || 0;
-          return Number(item.air_humidity || item.humidity || 0);
-        }),
-        borderColor: color,
-        backgroundColor: color + '22', // ใช้สีธรรมดาแทน Gradient เพื่อกัน Crash
-        borderWidth: 2,
-        pointRadius: 3,
-        tension: 0.3,
-        fill: true,
-        spanGaps: true,
-      };
+    // 3. ฟังก์ชันสร้าง Dataset แบบมาตรฐาน
+    const createDataset = (label: string, key: string, color: string, yAxisID: string) => ({
+      label: label,
+      data: recentData.map((item: any) => {
+        if (key === 'level') return Number(item.level) || 0;
+        if (key === 'temp') return Number(item.temperature) || 0;
+        return Number(item.air_humidity || item.humidity || 0);
+      }),
+      borderColor: color,
+      backgroundColor: color + '15',
+      borderWidth: 3,
+      pointRadius: 3,
+      pointHoverRadius: 6,
+      tension: 0.4,
+      fill: true,
+      yAxisID: yAxisID,
+      spanGaps: true
     });
+
+    const datasets: any[] = [];
+
+    if (viewMode === 'ALL_METRICS') {
+      // 🌟 โหมดแสดงทั้งหมด: ใส่มา 3 เส้นคนละสี
+      datasets.push(createDataset('🌊 ระดับน้ำ (cm)', 'level', '#3b82f6', 'y'));
+      datasets.push(createDataset('🌡️ อุณหภูมิ (°C)', 'temp', '#f97316', 'y1'));
+      datasets.push(createDataset('💧 ความชื้น (%)', 'humid', '#06b6d4', 'y2'));
+    } else {
+      // โหมดแยกดูทีละอย่าง
+      if (viewMode === 'LEVEL') datasets.push(createDataset('🌊 ระดับน้ำ (cm)', 'level', '#3b82f6', 'y'));
+      if (viewMode === 'TEMP') datasets.push(createDataset('🌡️ อุณหภูมิ (°C)', 'temp', '#f97316', 'y'));
+      if (viewMode === 'HUMIDITY') datasets.push(createDataset('💧 ความชื้น (%)', 'humid', '#06b6d4', 'y'));
+    }
 
     return { labels, datasets };
-  }, [data, viewMode, selectedDeviceMac, devices, mounted]);
+  }, [data, viewMode, selectedDeviceMac, mounted]);
 
   if (!mounted) return <div className="h-[400px] bg-slate-100 animate-pulse rounded-3xl" />;
 
   const options: any = {
     responsive: true,
     maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
     plugins: {
       legend: {
         display: true,
         position: 'top',
-        labels: { color: isDark ? '#cbd5e1' : '#475569', font: { size: 10 } }
+        labels: { 
+          color: isDark ? '#cbd5e1' : '#475569',
+          usePointStyle: true,
+          font: { size: 11, weight: 'bold' }
+        }
+      },
+      tooltip: {
+        backgroundColor: isDark ? '#1e293b' : '#fff',
+        titleColor: isDark ? '#f8fafc' : '#1e293b',
+        bodyColor: isDark ? '#94a3b8' : '#64748b',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.1)',
+        cornerRadius: 12,
+        padding: 12
       }
     },
     scales: {
       x: { 
-        ticks: { color: isDark ? '#64748b' : '#94a3b8', maxRotation: 0, font: { size: 9 } },
+        ticks: { color: isDark ? '#64748b' : '#94a3b8', font: { size: 10 } },
         grid: { display: false }
       },
-      y: { 
-        ticks: { color: isDark ? '#64748b' : '#94a3b8' },
+      y: { // แกน Y หลักสำหรับระดับน้ำ
+        type: 'linear',
+        display: true,
+        position: 'left',
+        ticks: { color: '#3b82f6' },
         grid: { color: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }
+      },
+      y1: { // แกน Y สำหรับอุณหภูมิ (ซ่อนไว้ถ้าไม่ใช้โหมด ALL)
+        type: 'linear',
+        display: viewMode === 'ALL_METRICS',
+        position: 'right',
+        ticks: { color: '#f97316' },
+        grid: { drawOnChartArea: false }
+      },
+      y2: { // แกน Y สำหรับความชื้น (ซ่อนไว้ถ้าไม่ใช้โหมด ALL)
+        type: 'linear',
+        display: viewMode === 'ALL_METRICS',
+        position: 'right',
+        ticks: { color: '#06b6d4' },
+        grid: { drawOnChartArea: false },
       }
     }
   };
 
   return (
     <div className="w-full h-full flex flex-col p-2">
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-        {['LEVEL', 'TEMP', 'HUMIDITY'].map((mode) => (
-          <button
-            key={mode}
-            onClick={() => setViewMode(mode as any)}
-            className={`px-3 py-1 rounded-full text-[10px] font-bold whitespace-nowrap transition-all ${
-              viewMode === mode 
-                ? 'bg-blue-600 text-white shadow-md' 
-                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-            }`}
-          >
-            {mode === 'LEVEL' ? '🌊 น้ำ' : mode === 'TEMP' ? '🌡️ อุณหภูมิ' : '💧 ความชื้น'}
-          </button>
-        ))}
+      {/* 🔘 ปุ่มกดเลือกโหมด */}
+      <div className="flex flex-wrap gap-2 mb-6">
+        <button
+          onClick={() => setViewMode('ALL_METRICS')}
+          className={`px-4 py-2 rounded-xl text-[11px] font-black tracking-widest uppercase transition-all ${
+            viewMode === 'ALL_METRICS' 
+              ? 'bg-slate-900 text-white shadow-xl scale-105' 
+              : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          📊 แสดงทั้งหมด
+        </button>
+        <div className="w-px h-8 bg-slate-200 mx-1 hidden sm:block" />
+        <button onClick={() => setViewMode('LEVEL')} className={`px-4 py-2 rounded-xl text-[11px] font-bold transition-all ${viewMode === 'LEVEL' ? 'bg-blue-500 text-white shadow-lg' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>🌊 น้ำ</button>
+        <button onClick={() => setViewMode('TEMP')} className={`px-4 py-2 rounded-xl text-[11px] font-bold transition-all ${viewMode === 'TEMP' ? 'bg-orange-500 text-white shadow-lg' : 'bg-orange-50 text-orange-600 hover:bg-orange-100'}`}>🌡️ อุณหภูมิ</button>
+        <button onClick={() => setViewMode('HUMIDITY')} className={`px-4 py-2 rounded-xl text-[11px] font-bold transition-all ${viewMode === 'HUMIDITY' ? 'bg-cyan-500 text-white shadow-lg' : 'bg-cyan-50 text-cyan-600 hover:bg-cyan-100'}`}>💧 ความชื้น</button>
       </div>
 
-      <div className="flex-grow min-h-[300px]">
+      <div className="flex-grow min-h-[350px] relative">
         {chartData.datasets.length > 0 ? (
           <Line data={chartData} options={options} />
         ) : (
-          <div className="h-full flex items-center justify-center text-slate-400 text-xs italic">
-            ยังไม่มีข้อมูลแสดงผล...
+          <div className="h-full flex items-center justify-center text-slate-400 text-xs italic border-2 border-dashed border-slate-200 rounded-[2rem]">
+            กำลังดึงข้อมูลจาก Sensors...
           </div>
         )}
       </div>
