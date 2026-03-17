@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -9,7 +9,7 @@ import {
   LineElement,
   Tooltip,
   Legend,
-  Filler
+  Filler,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 
@@ -22,35 +22,32 @@ export default function WaterLevelChart({
   devices = [],
   selectedDeviceMac = 'ALL'
 }: any) {
-
   const [viewMode, setViewMode] = useState<'LEVEL' | 'TEMP' | 'HUMIDITY'>('LEVEL');
   const [mounted, setMounted] = useState(false);
+  const chartRef = useRef<any>(null);
 
   useEffect(() => setMounted(true), []);
 
   if (!mounted) {
-    return <div className="h-[400px] flex items-center justify-center animate-pulse">Loading...</div>;
+    return (
+      <div className="h-[400px] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+      </div>
+    );
   }
 
   const now = new Date();
   const labels: string[] = [];
-
   const safeData = Array.isArray(data) ? data : [];
   const safeDevices = Array.isArray(devices) ? devices : [];
 
-  const activeDevices =
-    selectedDeviceMac === 'ALL'
-      ? safeDevices
-      : safeDevices.filter((d: any) => d.mac === selectedDeviceMac);
+  const activeDevices = selectedDeviceMac === 'ALL'
+    ? safeDevices
+    : safeDevices.filter((d: any) => d.mac === selectedDeviceMac);
 
   const deviceData: any = {};
-
   activeDevices.forEach((d: any) => {
-    deviceData[d.mac] = {
-      levels: [],
-      temps: [],
-      humidities: []
-    };
+    deviceData[d.mac] = { levels: [], temps: [], humidities: [] };
   });
 
   const getDate = (item: any) => {
@@ -58,146 +55,159 @@ export default function WaterLevelChart({
     return isNaN(d.getTime()) ? new Date() : d;
   };
 
-  const processBucket = (label: string, matched: any[]) => {
-    labels.push(label);
-
-    activeDevices.forEach((d: any) => {
-      const logs = matched.filter(
-        (log) =>
-          String(log?.mac || log?.device_id || '').toLowerCase() ===
-          String(d.mac).toLowerCase()
-      );
-
-      if (logs.length === 0) {
-        // ✅ แก้: ไม่มีข้อมูล = null (ไม่มั่ว)
-        deviceData[d.mac].levels.push(null);
-        deviceData[d.mac].temps.push(null);
-        deviceData[d.mac].humidities.push(null);
-        return;
-      }
-
-      const last = logs[logs.length - 1];
-
-      // ✅ แก้: ไม่เอา 0 มาทำกราฟดิ่ง
-      const level = Number(last?.water_level ?? last?.level ?? null);
-      const temp = Number(last?.temperature ?? last?.temp ?? null);
-      const humid = Number(last?.air_humidity ?? last?.humidity ?? null);
-
-      deviceData[d.mac].levels.push(level === 0 || isNaN(level) ? null : level);
-      deviceData[d.mac].temps.push(isNaN(temp) ? null : temp);
-      deviceData[d.mac].humidities.push(isNaN(humid) ? null : humid);
-    });
-  };
-
-  // time loop
+  // ดึงข้อมูล 24 ชั่วโมงย้อนหลัง
   for (let i = 23; i >= 0; i--) {
     const d = new Date(now.getTime() - i * 3600000);
-    const matched = safeData.filter((item) => {
-      const it = getDate(item);
-      return it.getHours() === d.getHours() && it.toDateString() === d.toDateString();
-    });
+    const label = d.getHours() + ':00';
+    labels.push(label);
 
-    processBucket(d.getHours() + ':00', matched);
+    activeDevices.forEach((device: any) => {
+      const matched = safeData.filter((item) => {
+        const it = getDate(item);
+        return it.getHours() === d.getHours() && it.toDateString() === d.toDateString() &&
+               String(item?.mac || '').toLowerCase() === String(device.mac).toLowerCase();
+      });
+
+      if (matched.length === 0) {
+        deviceData[device.mac].levels.push(null);
+        deviceData[device.mac].temps.push(null);
+        deviceData[device.mac].humidities.push(null);
+      } else {
+        const last = matched[matched.length - 1];
+        const valL = Number(last?.level ?? null);
+        const valT = Number(last?.temperature ?? null);
+        const valH = Number(last?.air_humidity ?? last?.humidity ?? null);
+        
+        deviceData[device.mac].levels.push(valL === 0 ? null : valL);
+        deviceData[device.mac].temps.push(valT === 0 ? null : valT);
+        deviceData[device.mac].humidities.push(valH === 0 ? null : valH);
+      }
+    });
   }
 
-  const datasets: any[] = [];
-
-  activeDevices.forEach((d: any) => {
-    const dat = deviceData[d.mac];
-
-    if (viewMode === 'LEVEL') {
-      datasets.push({
-        label: 'ระดับน้ำ',
-        data: dat.levels,
-        borderColor: '#3b82f6',
-        backgroundColor: 'rgba(59,130,246,0.15)',
-        borderWidth: 3,
-        pointRadius: 3,
-        pointHoverRadius: 6,
-        tension: 0.45,
-        cubicInterpolationMode: 'monotone',
-        fill: true,
-        spanGaps: true,
-        yAxisID: 'y'
-      });
-    }
-
-    if (viewMode === 'TEMP') {
-      datasets.push({
-        label: 'อุณหภูมิ',
-        data: dat.temps,
-        borderColor: '#f97316',
-        borderWidth: 2,
-        tension: 0.4,
-        spanGaps: true,
-        yAxisID: 'y1'
-      });
-    }
-
-    if (viewMode === 'HUMIDITY') {
-      datasets.push({
-        label: 'ความชื้น',
-        data: dat.humidities,
-        borderColor: '#06b6d4',
-        borderWidth: 2,
-        tension: 0.4,
-        spanGaps: true,
-        yAxisID: 'y2'
-      });
-    }
-  });
-
-  // ✅ auto scale
-  const getMinMax = (arr: any[]) => {
-    const clean = arr.filter((v) => v !== null);
-    if (clean.length === 0) return { min: 0, max: 10 };
-    return { min: Math.min(...clean), max: Math.max(...clean) };
+  const getThemeColor = () => {
+    if (viewMode === 'LEVEL') return { main: '#3b82f6', light: 'rgba(59, 130, 246, 0.2)', bg: 'rgba(59, 130, 246, 0.05)' };
+    if (viewMode === 'TEMP') return { main: '#f97316', light: 'rgba(249, 115, 22, 0.2)', bg: 'rgba(249, 115, 22, 0.05)' };
+    return { main: '#06b6d4', light: 'rgba(6, 182, 212, 0.2)', bg: 'rgba(6, 182, 212, 0.05)' };
   };
 
-  const level = getMinMax(datasets.flatMap((d) => d.data));
+  const theme = getThemeColor();
+
+  const datasets = activeDevices.map((d: any) => {
+    const config = {
+      label: viewMode === 'LEVEL' ? `ระดับน้ำ (${d.name})` : viewMode === 'TEMP' ? `อุณหภูมิ (${d.name})` : `ความชื้น (${d.name})`,
+      data: viewMode === 'LEVEL' ? deviceData[d.mac].levels : viewMode === 'TEMP' ? deviceData[d.mac].temps : deviceData[d.mac].humidities,
+      borderColor: theme.main,
+      backgroundColor: (context: any) => {
+        const ctx = context.chart.ctx;
+        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+        gradient.addColorStop(0, theme.light);
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        return gradient;
+      },
+      borderWidth: 3,
+      pointRadius: 0, // ซ่อนจุดปกติเพื่อให้ดู Clean
+      pointHoverRadius: 6,
+      pointBackgroundColor: theme.main,
+      pointBorderColor: '#fff',
+      pointBorderWidth: 2,
+      tension: 0.4, // ความโค้งมน
+      fill: true,
+      spanGaps: true,
+    };
+    return config;
+  });
 
   const options: any = {
     responsive: true,
     maintainAspectRatio: false,
-
-    animation: {
-      duration: 800,
-      easing: 'easeOutQuart'
+    layout: {
+      padding: {
+        left: 10,
+        right: 20,
+        top: 20,
+        bottom: 10
+      }
     },
-
     plugins: {
       legend: {
+        display: true,
+        position: 'top',
+        align: 'end',
         labels: {
-          color: isDark ? '#cbd5e1' : '#475569'
+          boxWidth: 8,
+          usePointStyle: true,
+          pointStyle: 'circle',
+          padding: 20,
+          color: isDark ? '#94a3b8' : '#64748b',
+          font: { size: 12, weight: '600' }
+        }
+      },
+      tooltip: {
+        backgroundColor: isDark ? '#1e293b' : '#fff',
+        titleColor: isDark ? '#f8fafc' : '#1e293b',
+        bodyColor: isDark ? '#94a3b8' : '#64748b',
+        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+        borderWidth: 1,
+        padding: 12,
+        cornerRadius: 12,
+        displayColors: true,
+        usePointStyle: true,
+        callbacks: {
+          label: (context: any) => ` ${context.dataset.label}: ${context.parsed.y} ${viewMode === 'LEVEL' ? 'cm' : viewMode === 'TEMP' ? '°C' : '%'}`
         }
       }
     },
-
     scales: {
       x: {
-        grid: { color: 'rgba(0,0,0,0.05)' }
+        grid: { display: false },
+        ticks: {
+          color: isDark ? '#64748b' : '#94a3b8',
+          font: { size: 10 },
+          maxRotation: 0,
+          autoSkip: true,
+          maxTicksLimit: 8 // ป้องกันชื่อแกน X เบียดกันจนตกขอบ
+        }
       },
-
       y: {
-        beginAtZero: false,
-        suggestedMin: level.min - 1,
-        suggestedMax: level.max + 1
+        grid: {
+          color: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+        },
+        border: { display: false },
+        ticks: {
+          color: isDark ? '#64748b' : '#94a3b8',
+          font: { size: 11 },
+          padding: 10
+        }
       }
     }
   };
 
   return (
-    <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg p-6 border border-white/30">
-
-      <div className="flex justify-center gap-3 mb-4">
-        <button onClick={() => setViewMode('LEVEL')} className="px-4 py-1 bg-blue-500 text-white rounded-full text-xs">น้ำ</button>
-        <button onClick={() => setViewMode('TEMP')} className="px-4 py-1 bg-orange-500 text-white rounded-full text-xs">อุณหภูมิ</button>
-        <button onClick={() => setViewMode('HUMIDITY')} className="px-4 py-1 bg-cyan-500 text-white rounded-full text-xs">ความชื้น</button>
+    <div className="w-full h-full flex flex-col">
+      {/* Tab Switcher */}
+      <div className="flex justify-start gap-2 mb-6 p-1 bg-slate-100 dark:bg-white/5 w-fit rounded-2xl border border-slate-200 dark:border-white/10">
+        {[
+          { key: 'LEVEL', label: 'ระดับน้ำ', color: 'bg-blue-500', text: 'text-blue-600' },
+          { key: 'TEMP', label: 'อุณหภูมิ', color: 'bg-orange-500', text: 'text-orange-600' },
+          { key: 'HUMIDITY', label: 'ความชื้น', color: 'bg-cyan-500', text: 'text-cyan-600' }
+        ].map((item) => (
+          <button
+            key={item.key}
+            onClick={() => setViewMode(item.key as any)}
+            className={`px-4 py-1.5 rounded-xl text-[11px] font-bold transition-all ${
+              viewMode === item.key 
+                ? `${item.color} text-white shadow-sm` 
+                : 'text-slate-500 hover:bg-white dark:hover:bg-white/5'
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
       </div>
 
-      <div className="h-[400px]">
-        {/* @ts-ignore */}
-        <Line data={{ labels, datasets }} options={options} />
+      <div className="flex-grow relative min-h-[300px]">
+        <Line ref={chartRef} data={{ labels, datasets }} options={options} />
       </div>
     </div>
   );
