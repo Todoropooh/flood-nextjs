@@ -6,7 +6,6 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import WaterLevelChart from '@/components/WaterLevelChart';
 import StatusDonut from '@/components/StatusDonut';
-// 🌟 นำเข้า Recharts สำหรับกราฟจิ๋ว
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 import { 
   Waves, Settings, Sun, Moon, Activity, Thermometer, 
@@ -15,7 +14,6 @@ import {
 
 const DeviceMap = dynamic(() => import('@/components/DeviceMap'), { ssr: false });
 
-// 🛡️ ฟังก์ชันป้องกันแอปแครช (Safe Utilities)
 const safeNumber = (val: any, fallback = 0) => {
   const num = Number(val);
   return isNaN(num) ? fallback : num;
@@ -23,14 +21,12 @@ const safeNumber = (val: any, fallback = 0) => {
 
 const safeMax = (arr: any[], key: string) => {
   if (!arr || arr.length === 0) return 0;
-  // ใช้ reduce แทน Math.max เพื่อป้องกัน Stack Overflow เวลาข้อมูลมีเป็นหมื่นบรรทัด
   return arr.reduce((max, item) => {
     const val = safeNumber(item[key]);
     return val > max ? val : max;
   }, -Infinity);
 };
 
-// 📊 1. Component กราฟจิ๋ว
 function MiniChart({ data, color = "#3b82f6" }: { data: any[], color?: string }) {
   if (!data || !Array.isArray(data) || data.length === 0) return <div className="h-10 w-full mt-1" />; 
   return (
@@ -51,7 +47,6 @@ export default function Home() {
   const [selectedDeviceMac, setSelectedDeviceMac] = useState<string>('ALL');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  const [showUI, setShowUI] = useState(false);
   const [timeframe, setTimeframe] = useState('day'); 
   const { setTheme, resolvedTheme } = useTheme();
 
@@ -74,6 +69,7 @@ export default function Home() {
           air_humidity: safeNumber(l.air_humidity ?? l.humidity)
         })) : [];
         setLogs(safeLogs);
+        console.log("✅ Logs Loaded:", safeLogs.length); // เช็คว่าดึงข้อมูลได้ไหม
       }
       
       if (deviceRes.ok) {
@@ -88,8 +84,11 @@ export default function Home() {
         })) : [];
         setDevices(safeDevices);
         checkAndNotify(safeDevices); 
+        console.log("✅ Devices Loaded:", safeDevices.length); // เช็คว่าดึงอุปกรณ์ได้ไหม
       }
-    } catch (e) { console.error("Fetch error:", e); }
+    } catch (e) { 
+      console.error("❌ Fetch error:", e); 
+    }
   };
 
   const checkAndNotify = (currentDevices: any[]) => {
@@ -98,20 +97,9 @@ export default function Home() {
       currentDevices.forEach(device => {
         const wl = device.waterLevel;
         if (wl >= device.criticalThreshold && lastNotifiedRef.current[device.mac] !== 'CRITICAL') {
-          new Notification(`🚨 ระดับน้ำวิกฤต: ${device.name}`, {
-            body: `ขณะนี้ระดับน้ำสูงถึง ${wl.toFixed(1)} cm กรุณาตรวจสอบด่วน!`,
-            icon: '/logo.png' 
-          });
+          new Notification(`🚨 ระดับน้ำวิกฤต: ${device.name}`, { body: `ระดับน้ำสูงถึง ${wl.toFixed(1)} cm`, icon: '/logo.png' });
           lastNotifiedRef.current[device.mac] = 'CRITICAL';
-        } else if (wl >= device.warningThreshold && wl < device.criticalThreshold && lastNotifiedRef.current[device.mac] !== 'WARNING') {
-          new Notification(`⚠️ เฝ้าระวัง: ${device.name}`, {
-            body: `ระดับน้ำเริ่มสูงขึ้น: ${wl.toFixed(1)} cm`,
-            icon: '/logo.png'
-          });
-          lastNotifiedRef.current[device.mac] = 'WARNING';
-        } else if (wl < device.warningThreshold) {
-          lastNotifiedRef.current[device.mac] = 'NORMAL';
-        }
+        } 
       });
     }
   };
@@ -120,17 +108,20 @@ export default function Home() {
     setIsMounted(true);
     fetchData();
     if (typeof window !== "undefined" && "Notification" in window) Notification.requestPermission();
-    setTimeout(() => setShowUI(true), 250);
     const interval = setInterval(fetchData, 5000); 
     return () => clearInterval(interval);
   }, [timeframe]);
 
-  if (!isMounted) return <div className="min-h-screen bg-slate-50 dark:bg-[#060a14]" />;
+  // ✨ เปลี่ยนจากจอขาวเป็นโชว์คำว่ากำลังโหลด จะได้รู้ว่ามันค้างตรงนี้ไหม
+  if (!isMounted) return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-[#060a14]">
+      <h1 className="text-xl font-bold text-slate-500 animate-pulse">กำลังเตรียมหน้าจอ...</h1>
+    </div>
+  );
 
   const displayLogs = selectedDeviceMac === 'ALL' ? logs : logs.filter(log => log.mac === selectedDeviceMac);
   const displayDevices = selectedDeviceMac === 'ALL' ? devices : devices.filter(d => d.mac === selectedDeviceMac);
 
-  // --- Logic การคำนวณค่าเพื่อนำไปโชว์ ---
   let currentLevel = 0, currentTemp = 0, currentHum = 0, systemStatus = 'NORMAL', lastUpdateTime = null;
 
   if (selectedDeviceMac !== 'ALL' && displayDevices.length > 0) {
@@ -164,16 +155,16 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen relative pb-20 font-sans text-slate-800 dark:text-white transition-colors duration-700 bg-slate-50 dark:bg-[#060a14]">
+    <main className="min-h-screen relative pb-20 font-sans text-slate-800 dark:text-white bg-slate-50 dark:bg-[#060a14]">
       
       {/* 🌌 Background */}
-      <div className="fixed inset-0 -z-10 transition-colors duration-700">
-        <img src="https://img.freepik.com/premium-photo/gradient-defocused-abstract-luxury-vivid-blurred-colorful-texture-wallpaper-photo-background_98870-1088.jpg" className={`w-full h-full object-cover transition-all duration-[3000ms] ease-out opacity-100 ${showUI ? 'scale-100' : 'scale-110 blur-sm'}`} alt="bg" />
-        <div className="absolute inset-0 bg-white/20 dark:bg-black/40 backdrop-blur-xl transition-colors duration-700" />
+      <div className="fixed inset-0 -z-10">
+        <img src="https://img.freepik.com/premium-photo/gradient-defocused-abstract-luxury-vivid-blurred-colorful-texture-wallpaper-photo-background_98870-1088.jpg" className="w-full h-full object-cover opacity-100" alt="bg" />
+        <div className="absolute inset-0 bg-white/20 dark:bg-black/40 backdrop-blur-xl" />
       </div>
 
       {/* 📌 FIXED HEADER */}
-      <div className={`fixed top-0 left-0 right-0 z-50 w-full bg-white/40 dark:bg-[#0a0f1c]/50 backdrop-blur-2xl border-b border-white/50 dark:border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)] transition-all duration-1000 cubic-bezier(0.16, 1, 0.3, 1) ${showUI ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
+      <div className="fixed top-0 left-0 right-0 z-50 w-full bg-white/40 dark:bg-[#0a0f1c]/50 backdrop-blur-2xl border-b border-white/50 dark:border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="hidden md:flex gap-2 mr-2">
@@ -210,27 +201,29 @@ export default function Home() {
       </div>
 
       {/* 📜 CONTENT AREA */}
-      <div className="max-w-7xl mx-auto px-4 pt-24 mt-6 space-y-6 relative z-10">
+      <div className="max-w-7xl mx-auto px-4 pt-24 mt-6 space-y-6 relative z-10 opacity-100">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard label={selectedDeviceMac === 'ALL' ? 'Max Level' : 'Current Level'} val={currentLevel.toFixed(1)} unit="cm" subVal={`Peak: ${todayMaxLevel.toFixed(1)} cm`} icon={Waves} color="text-blue-500" showUI={showUI} delay="delay-[100ms]" />
-          <MetricCard label="Temperature" val={currentTemp.toFixed(1)} unit="°C" subVal={`Avg: ${todayAvgTemp.toFixed(1)} °C`} icon={Thermometer} color="text-orange-500" showUI={showUI} delay="delay-[200ms]" />
-          <MetricCard label="Humidity" val={currentHum.toFixed(0)} unit="%" subVal={`Avg: ${todayAvgHum.toFixed(0)} %`} icon={Droplets} color="text-cyan-500" showUI={showUI} delay="delay-[300ms]" />
-          <StatusCard status={systemStatus} lastUpdate={lastUpdateTime} showUI={showUI} delay="delay-[400ms]" />
+          <MetricCard label={selectedDeviceMac === 'ALL' ? 'Max Level' : 'Current Level'} val={currentLevel.toFixed(1)} unit="cm" subVal={`Peak: ${todayMaxLevel.toFixed(1)} cm`} icon={Waves} color="text-blue-500" />
+          <MetricCard label="Temperature" val={currentTemp.toFixed(1)} unit="°C" subVal={`Avg: ${todayAvgTemp.toFixed(1)} °C`} icon={Thermometer} color="text-orange-500" />
+          <MetricCard label="Humidity" val={currentHum.toFixed(0)} unit="%" subVal={`Avg: ${todayAvgHum.toFixed(0)} %`} icon={Droplets} color="text-cyan-500" />
+          <StatusCard status={systemStatus} lastUpdate={lastUpdateTime} />
         </div>
 
         {/* Live Nodes Status */}
         {selectedDeviceMac === 'ALL' && devices.length > 0 && (
-          <div className={`transform transition-all duration-1000 delay-[500ms] ease-out ${showUI ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-10 opacity-0 scale-95'}`}>
+          <div>
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-3 pl-1 flex items-center gap-2">Live Nodes Status</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               {devices.map((device) => {
                 const wl = device.waterLevel;
                 const status = getStatusDesign(wl, device.warningThreshold, device.criticalThreshold);
-                const critLimit = device.criticalThreshold === 0 ? 1 : device.criticalThreshold; // ป้องกันหารด้วย 0
-                const rawPercent = (wl / critLimit) * 100;
-                const percent = isNaN(rawPercent) ? 0 : Math.min(rawPercent, 100);
+                const percent = Math.min((wl / (device.criticalThreshold || 10)) * 100, 100);
 
-                const deviceMiniLogs = logs.filter(l => l.mac === device.mac).slice(-10).map(l => ({ level: l.level }));
+                const deviceMiniLogs = logs
+                  .filter(l => l.mac === device.mac)
+                  .map(l => ({ level: l.level }))
+                  .reverse()
+                  .slice(-10);
 
                 return (
                   <div key={device.mac} onClick={() => setSelectedDeviceMac(device.mac)} className="cursor-pointer bg-white/50 dark:bg-[#111827]/60 border border-white/50 dark:border-white/10 p-5 rounded-3xl backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl relative flex flex-col group overflow-hidden shadow-sm">
@@ -266,7 +259,7 @@ export default function Home() {
         )}
 
         {/* Analytics History */}
-        <div className={`grid grid-cols-1 lg:grid-cols-12 gap-4 transform transition-all duration-1000 delay-[600ms] cubic-bezier(0.16, 1, 0.3, 1) ${showUI ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-10 opacity-0 scale-95'}`}>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <div className="lg:col-span-8 bg-white/50 dark:bg-[#111827]/60 p-6 md:p-8 rounded-[2.5rem] border border-white/50 dark:border-white/10 shadow-lg dark:shadow-[0_8px_30px_rgba(0,0,0,0.4)] backdrop-blur-2xl min-h-[380px] flex flex-col relative group transition-colors hover:bg-white/60 dark:hover:bg-[#111827]/70">
             <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-6 relative z-10">
               <h3 className="text-[11px] font-black uppercase text-slate-800 dark:text-slate-200 tracking-widest flex items-center gap-2"><Activity size={16} className="text-blue-500"/> Analytics Trend</h3>
@@ -287,7 +280,7 @@ export default function Home() {
         </div>
 
         {/* Device Map */}
-        <div className={`space-y-4 pt-2 transform transition-all duration-1000 delay-[700ms] cubic-bezier(0.16, 1, 0.3, 1) ${showUI ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
+        <div className="space-y-4 pt-2">
           <div className="bg-white/50 dark:bg-[#111827]/60 p-2 rounded-[2.5rem] border border-white/50 dark:border-white/10 shadow-lg dark:shadow-[0_8px_30px_rgba(0,0,0,0.4)] backdrop-blur-xl overflow-hidden">
             <div className="h-[400px] w-full rounded-[2rem] overflow-hidden relative z-0">
               <DeviceMap devices={displayDevices} selectedDevice={null} />
@@ -299,35 +292,32 @@ export default function Home() {
   );
 }
 
-function MetricCard({ label, val, unit, subVal, icon: Icon, color, showUI, delay }: any) {
+function MetricCard({ label, val, unit, subVal, icon: Icon, color }: any) {
   return (
-    <div className={`transform transition-all duration-1000 cubic-bezier(0.16, 1, 0.3, 1) ${delay} ${showUI ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-10 opacity-0 scale-95'}`}>
-      <div className={`group bg-white/50 dark:bg-[#111827]/60 p-5 md:p-6 rounded-3xl border border-white/50 dark:border-white/10 shadow-lg backdrop-blur-xl h-[140px] flex flex-col justify-between transition-all duration-500 hover:-translate-y-1 hover:bg-white/60 dark:hover:bg-[#111827]/80 relative overflow-hidden`}>
-        <div className={`absolute -right-8 -top-8 w-32 h-32 ${color.replace('text', 'bg')}/5 rounded-full blur-2xl group-hover:scale-125 transition-transform duration-700`} />
-        <div className="flex justify-between items-start relative z-10">
-          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">{label}</span>
-          <div className={`p-2.5 rounded-xl bg-white/80 dark:bg-black/30 shadow-sm border border-white/50 dark:border-white/5 group-hover:scale-110 transition-transform duration-300 ${color}`}><Icon size={18} strokeWidth={2.5}/></div>
+    <div className="group bg-white/50 dark:bg-[#111827]/60 p-5 md:p-6 rounded-3xl border border-white/50 dark:border-white/10 shadow-lg backdrop-blur-xl h-[140px] flex flex-col justify-between transition-all duration-500 hover:-translate-y-1 hover:bg-white/60 dark:hover:bg-[#111827]/80 relative overflow-hidden">
+      <div className={`absolute -right-8 -top-8 w-32 h-32 ${color.replace('text', 'bg')}/5 rounded-full blur-2xl group-hover:scale-125 transition-transform duration-700`} />
+      <div className="flex justify-between items-start relative z-10">
+        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">{label}</span>
+        <div className={`p-2.5 rounded-xl bg-white/80 dark:bg-black/30 shadow-sm border border-white/50 dark:border-white/5 group-hover:scale-110 transition-transform duration-300 ${color}`}><Icon size={18} strokeWidth={2.5}/></div>
+      </div>
+      <div className="relative z-10">
+        <div className="flex items-baseline gap-1 mt-1">
+          <span className="text-3xl md:text-4xl font-black tracking-tight text-slate-800 dark:text-white">{val}</span>
+          <span className="text-xs font-bold text-slate-500 ml-1">{unit}</span>
         </div>
-        <div className="relative z-10">
-          <div className="flex items-baseline gap-1 mt-1">
-            <span className="text-3xl md:text-4xl font-black tracking-tight text-slate-800 dark:text-white">{val}</span>
-            <span className="text-xs font-bold text-slate-500 ml-1">{unit}</span>
-          </div>
-          {subVal && <div className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">{subVal}</div>}
-        </div>
+        {subVal && <div className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">{subVal}</div>}
       </div>
     </div>
   );
 }
 
-function StatusCard({ status, lastUpdate, showUI, delay }: any) {
+function StatusCard({ status, lastUpdate }: any) {
   const isDataOld = !lastUpdate || (Date.now() - new Date(lastUpdate).getTime() > 10 * 60 * 1000); 
   const displayStatus = isDataOld ? 'OFFLINE' : (status || 'NORMAL');
   const isCritical = displayStatus.toLowerCase() === 'critical';
   const isWarning = displayStatus.toLowerCase() === 'warning';
   const isOffline = displayStatus === 'OFFLINE';
   
-  // 🛡️ ฟังก์ชันช่วยจัดรูปแบบเวลาให้ปลอดภัย ไม่แครชแม้ค่าผิด
   const safeTimeFormat = (dateVal: any) => {
     if (!dateVal) return 'Waiting...';
     const d = new Date(dateVal);
@@ -336,27 +326,25 @@ function StatusCard({ status, lastUpdate, showUI, delay }: any) {
   };
 
   return (
-    <div className={`transform transition-all duration-1000 cubic-bezier(0.16, 1, 0.3, 1) ${delay} ${showUI ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-10 opacity-0 scale-95'}`}>
-      <div className={`group bg-white/50 dark:bg-[#111827]/60 p-5 md:p-6 rounded-3xl border border-white/50 dark:border-white/10 shadow-lg backdrop-blur-xl h-[140px] flex flex-col justify-between transition-all duration-500 hover:-translate-y-1 hover:bg-white/60 dark:hover:bg-[#111827]/80 relative overflow-hidden`}>
-        <div className={`absolute -right-8 -top-8 w-32 h-32 ${isCritical?'bg-red-500/5':isWarning?'bg-orange-500/5':isOffline?'bg-slate-500/5':'bg-emerald-500/5'} rounded-full blur-2xl group-hover:scale-125 transition-transform duration-700`} />
-        <div className="flex justify-between items-start relative z-10">
-          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">System Status</span>
-          <div className={`p-2.5 rounded-xl bg-white/80 dark:bg-black/30 shadow-sm border border-white/50 dark:border-white/5 group-hover:scale-110 transition-transform duration-300 ${isCritical ? 'text-red-500' : isWarning ? 'text-orange-500' : isOffline ? 'text-slate-400' : 'text-emerald-500'}`}>
-            <Activity size={18} strokeWidth={2.5}/>
-          </div>
+    <div className="group bg-white/50 dark:bg-[#111827]/60 p-5 md:p-6 rounded-3xl border border-white/50 dark:border-white/10 shadow-lg backdrop-blur-xl h-[140px] flex flex-col justify-between transition-all duration-500 hover:-translate-y-1 hover:bg-white/60 dark:hover:bg-[#111827]/80 relative overflow-hidden">
+      <div className={`absolute -right-8 -top-8 w-32 h-32 ${isCritical?'bg-red-500/5':isWarning?'bg-orange-500/5':isOffline?'bg-slate-500/5':'bg-emerald-500/5'} rounded-full blur-2xl group-hover:scale-125 transition-transform duration-700`} />
+      <div className="flex justify-between items-start relative z-10">
+        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">System Status</span>
+        <div className={`p-2.5 rounded-xl bg-white/80 dark:bg-black/30 shadow-sm border border-white/50 dark:border-white/5 group-hover:scale-110 transition-transform duration-300 ${isCritical ? 'text-red-500' : isWarning ? 'text-orange-500' : isOffline ? 'text-slate-400' : 'text-emerald-500'}`}>
+          <Activity size={18} strokeWidth={2.5}/>
         </div>
-        <div className="relative z-10">
-          <div className={`mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest shadow-sm border
-            ${isCritical ? 'bg-red-100/80 text-red-600 dark:bg-red-500/20 dark:text-red-400 border-red-200/50 dark:border-red-500/30' : 
-              isWarning ? 'bg-orange-100/80 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400 border-orange-200/50 dark:border-orange-500/30' : 
-              isOffline ? 'bg-slate-100/80 text-slate-600 dark:bg-white/10 dark:text-slate-300 border-slate-200/50 dark:border-white/10' : 
-              'bg-emerald-100/80 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 border-emerald-200/50 dark:border-emerald-500/30'}`}>
-            <div className={`w-1.5 h-1.5 rounded-full ${isCritical ? 'bg-red-500 animate-ping' : isWarning ? 'bg-orange-500 animate-pulse' : isOffline ? 'bg-slate-400' : 'bg-emerald-500'}`} />
-            {displayStatus.toUpperCase()}
-          </div>
-          <div className="text-[9px] font-bold text-slate-400 mt-2 uppercase tracking-widest">
-            Last: {safeTimeFormat(lastUpdate)}
-          </div>
+      </div>
+      <div className="relative z-10">
+        <div className={`mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest shadow-sm border
+          ${isCritical ? 'bg-red-100/80 text-red-600 dark:bg-red-500/20 dark:text-red-400 border-red-200/50 dark:border-red-500/30' : 
+            isWarning ? 'bg-orange-100/80 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400 border-orange-200/50 dark:border-orange-500/30' : 
+            isOffline ? 'bg-slate-100/80 text-slate-600 dark:bg-white/10 dark:text-slate-300 border-slate-200/50 dark:border-white/10' : 
+            'bg-emerald-100/80 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 border-emerald-200/50 dark:border-emerald-500/30'}`}>
+          <div className={`w-1.5 h-1.5 rounded-full ${isCritical ? 'bg-red-500 animate-ping' : isWarning ? 'bg-orange-500 animate-pulse' : isOffline ? 'bg-slate-400' : 'bg-emerald-500'}`} />
+          {displayStatus.toUpperCase()}
+        </div>
+        <div className="text-[9px] font-bold text-slate-400 mt-2 uppercase tracking-widest">
+          Last: {safeTimeFormat(lastUpdate)}
         </div>
       </div>
     </div>
