@@ -3,6 +3,9 @@ import connectDB from "@/db/connect";
 import WaterLog from "@/db/models/WaterLog";
 import Device from "@/db/models/Device";
 
+// ✨ ปิดระบบ Cache ของ Vercel เพื่อให้หน้าเว็บดึงข้อมูลสดใหม่เสมอเวลากดรีเฟรช!
+export const dynamic = 'force-dynamic';
+
 // 🌟 1. ฟังก์ชันส่ง LINE Messaging API
 async function sendLineMessage(message: string) {
   const ACCESS_TOKEN = "JSP4AFcQD0fSIwxGBIQXT+W2h/sD3wcdPUaLPu5I4znODmfu9l1qLVMgP328d/CZbBD8vRxfgv0LMwtc5Hn3MnQEovNDRLejZJ/VstvpNgfi98Kv/RXYQUQMbgg4TEbDeii03sBTNE4L9hkwS7tV/wdB04t89/1O/w1cDnyilFU="; 
