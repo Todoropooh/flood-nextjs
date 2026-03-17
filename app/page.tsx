@@ -14,6 +14,9 @@ import {
 
 const DeviceMap = dynamic(() => import('@/components/DeviceMap'), { ssr: false });
 
+// ✨ ป้องกัน Vercel จำหน้าเก่าที่พังมาโชว์แวบๆ ตอนเพิ่ง Deploy เสร็จ
+export const dynamic = 'force-dynamic';
+
 // ==========================================
 // 🛡️ 1. เกราะป้องกัน UI (Catch Silent Crashes)
 // ==========================================
@@ -84,7 +87,10 @@ export default function Home() {
   const [devices, setDevices] = useState<any[]>([]);
   const [selectedDeviceMac, setSelectedDeviceMac] = useState<string>('ALL');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  
+  // 🛡️ ปรับ isMounted ให้ดักจับการโหลดหน้าเว็บฝั่ง Client อย่างเด็ดขาด
   const [isMounted, setIsMounted] = useState(false);
+  
   const [timeframe, setTimeframe] = useState('day'); 
   const [apiError, setApiError] = useState<string | null>(null);
   
@@ -106,7 +112,6 @@ export default function Home() {
 
       setApiError(null);
 
-      // ✨ กรองเอา Null/Undefined ออกจาก Array แบบเด็ดขาด (นี่คือสาเหตุที่พบบ่อยสุด)
       const logData = await logRes.json();
       const safeLogs = Array.isArray(logData) ? logData.filter(l => l && typeof l === 'object').map(l => ({
         ...l, level: safeNumber(l?.level), temperature: safeNumber(l?.temperature), air_humidity: safeNumber(l?.air_humidity ?? l?.humidity)
@@ -141,23 +146,25 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [timeframe]);
 
+  // 🛡️ โชว์หน้านี้ระหว่างที่ React ยังเตรียมตัวไม่เสร็จ (กันจอขาว)
   if (!isMounted) return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-[#060a14]">
       <h1 className="text-xl font-bold text-slate-500 animate-pulse">กำลังเตรียมหน้าจอ...</h1>
     </div>
   );
 
+  // 🚨 โชว์หน้านี้ถ้าต่อ Database ไม่ติด (กันหน้าเว็บหาย)
   if (apiError) return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-[#060a14] p-4">
       <div className="bg-red-50 dark:bg-red-900/20 p-8 rounded-3xl border border-red-200 text-center max-w-lg shadow-xl">
         <Database size={48} className="text-red-500 mx-auto mb-4" />
         <h1 className="text-xl font-bold text-red-600 mb-2">เชื่อมต่อฐานข้อมูลล้มเหลว</h1>
         <p className="text-sm text-red-500/80 mb-6">{apiError}</p>
+        <button onClick={fetchData} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-sm shadow-md transition-all">ลองดึงข้อมูลใหม่</button>
       </div>
     </div>
   );
 
-  // 🛡️ ห่อการแสดงผลทั้งหมดด้วย SafeComponent
   return (
     <SafeComponent>
       <DashboardContent 
@@ -170,7 +177,7 @@ export default function Home() {
 }
 
 // ==========================================
-// 📊 3. ตัวคำนวณและวาด UI (ถ้าโค้ดในนี้พัง เกราะจะทำงานทันที!)
+// 📊 3. ตัวคำนวณและวาด UI 
 // ==========================================
 function DashboardContent({ logs, devices, selectedDeviceMac, setSelectedDeviceMac, isDropdownOpen, setIsDropdownOpen, timeframe, setTimeframe, resolvedTheme, setTheme }: any) {
   
@@ -224,7 +231,7 @@ function DashboardContent({ logs, devices, selectedDeviceMac, setSelectedDeviceM
             <div className="relative">
               <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="flex items-center gap-2 px-3 py-1.5 bg-white/50 dark:bg-white/5 rounded-lg hover:bg-white/80 transition-all border border-white/50 shadow-sm">
                 <span className="text-[11px] font-bold uppercase tracking-wider">
-                  {selectedDeviceMac === 'ALL' ? 'Overview (กำลังทดสอบ)' : devices.find((d:any) => d.mac === selectedDeviceMac)?.name || 'Unknown'}
+                  {selectedDeviceMac === 'ALL' ? 'Overview' : devices.find((d:any) => d.mac === selectedDeviceMac)?.name || 'Unknown'}
                 </span>
                 <ChevronDown size={14} />
               </button>
