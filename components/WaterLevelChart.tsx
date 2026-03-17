@@ -18,52 +18,60 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip,
 export default function WaterLevelChart({
   data = [],
   isDark,
+  timeframe = 'day',
   devices = [],
   selectedDeviceMac = 'ALL'
 }: any) {
   const [viewMode, setViewMode] = useState<'LEVEL' | 'TEMP' | 'HUMIDITY' | 'ALL_METRICS'>('ALL_METRICS');
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  useEffect(() => { setMounted(true); }, []);
 
   const chartData = useMemo(() => {
-    if (!mounted || !Array.isArray(data) || data.length === 0) return { labels: [], datasets: [] };
+    if (!mounted) return { labels: [], datasets: [] };
 
-    // 1. กรองข้อมูลตามเครื่องที่เลือก
-    const filteredData = selectedDeviceMac === 'ALL' 
+    const filtered = selectedDeviceMac === 'ALL' 
       ? data 
-      : data.filter((item: any) => {
-          const itemMac = String(item?.mac || item?.device_id || '').toLowerCase();
-          return itemMac === String(selectedDeviceMac).toLowerCase();
-        });
+      : data.filter((item: any) => String(item?.mac || '').toLowerCase() === String(selectedDeviceMac).toLowerCase());
 
-    if (filteredData.length === 0) return { labels: [], datasets: [] };
+    // --- Logic สร้างแกน X ย้อนหลังแบบ Dynamic ---
+    const labels: string[] = [];
+    const now = new Date();
+    let steps = timeframe === 'day' ? 24 : timeframe === 'week' ? 7 : 30;
+    
+    for (let i = steps - 1; i >= 0; i--) {
+      const d = new Date(now);
+      if (timeframe === 'day') {
+        d.setHours(d.getHours() - i);
+        labels.push(d.getHours() + ':00');
+      } else {
+        d.setDate(d.getDate() - i);
+        labels.push(d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }));
+      }
+    }
 
-    // 2. สร้าง Labels (เวลา) - ปรับรูปแบบตามปริมาณข้อมูล
-    const labels = filteredData.map((item: any) => {
-      const d = new Date(item.createdAt || item.timestamp);
-      // ถ้าข้อมูลเยอะให้โชว์แค่วันที่/เวลาสั้นๆ
-      return d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-    });
-
-    // 3. ฟังก์ชันสร้าง Dataset
     const createDataset = (label: string, key: string, color: string, yAxisID: string) => ({
-      label: label,
-      data: filteredData.map((item: any) => {
-        if (key === 'level') return Number(item.level ?? item.water_level ?? 0);
-        if (key === 'temp') return Number(item.temperature ?? 0);
-        return Number(item.air_humidity || item.humidity || 0);
+      label,
+      data: labels.map((_, index) => {
+        if (filtered.length === 0) return null;
+        // กระจายข้อมูลจริงลงตามสัดส่วนของแกน X
+        const dataIndex = Math.floor((index / labels.length) * filtered.length);
+        const log = filtered[dataIndex];
+        
+        if (key === 'level') {
+          const val = Number(log?.level ?? log?.water_level);
+          return val > 0 ? val : null; // กันค่า 0 ทำกราฟตก
+        }
+        if (key === 'temp') return Number(log?.temperature) || null;
+        return Number(log?.air_humidity ?? log?.humidity) || null;
       }),
       borderColor: color,
       backgroundColor: color + '15',
       borderWidth: 2,
-      pointRadius: filteredData.length > 50 ? 0 : 3, // ซ่อนจุดถ้าข้อมูลเยอะเกินไปเพื่อความสวย
-      pointHoverRadius: 6,
+      pointRadius: labels.length > 30 ? 0 : 3,
       tension: 0.4,
       fill: true,
-      yAxisID: yAxisID,
+      yAxisID,
       spanGaps: true
     });
 
@@ -73,97 +81,84 @@ export default function WaterLevelChart({
       datasets.push(createDataset('🌡️ อุณหภูมิ (°C)', 'temp', '#f97316', 'y1'));
       datasets.push(createDataset('💧 ความชื้น (%)', 'humid', '#06b6d4', 'y2'));
     } else {
-      if (viewMode === 'LEVEL') datasets.push(createDataset('🌊 ระดับน้ำ (cm)', 'level', '#3b82f6', 'y'));
-      if (viewMode === 'TEMP') datasets.push(createDataset('🌡️ อุณหภูมิ (°C)', 'temp', '#f97316', 'y'));
-      if (viewMode === 'HUMIDITY') datasets.push(createDataset('💧 ความชื้น (%)', 'humid', '#06b6d4', 'y'));
+      const configMap: any = {
+        LEVEL: ['🌊 ระดับน้ำ (cm)', 'level', '#3b82f6'],
+        TEMP: ['🌡️ อุณหภูมิ (°C)', 'temp', '#f97316'],
+        HUMIDITY: ['💧 ความชื้น (%)', 'humid', '#06b6d4']
+      };
+      const [l, k, c] = configMap[viewMode];
+      datasets.push(createDataset(l, k, c, 'y'));
     }
 
     return { labels, datasets };
-  }, [data, viewMode, selectedDeviceMac, mounted]);
-
-  if (!mounted) return <div className="h-[400px] bg-slate-100 dark:bg-slate-800 animate-pulse rounded-3xl" />;
+  }, [data, timeframe, viewMode, selectedDeviceMac, mounted]);
 
   const options: any = {
     responsive: true,
     maintainAspectRatio: false,
-    layout: {
-      padding: {
-        bottom: 20, // ✅ แก้ปัญหาตัวเลขจม เพิ่มพื้นที่ด้านล่าง
-        left: 10,
-        right: 10,
-        top: 10
-      }
-    },
-    interaction: { mode: 'index', intersect: false },
+    layout: { padding: { bottom: 30, left: 10, right: 20, top: 10 } },
     plugins: {
-      legend: {
-        display: true,
-        position: 'top',
+      legend: { 
+        display: true, 
+        position: 'top', 
         labels: { 
-          color: isDark ? '#cbd5e1' : '#475569',
-          usePointStyle: true,
-          font: { size: 11, weight: 'bold' }
-        }
-      }
+          color: isDark ? '#cbd5e1' : '#475569', 
+          usePointStyle: true, 
+          font: { size: 11, weight: 'bold' } 
+        } 
+      },
+      tooltip: { mode: 'index', intersect: false }
     },
     scales: {
       x: { 
         ticks: { 
           color: isDark ? '#64748b' : '#94a3b8', 
-          font: { size: 10 },
-          maxRotation: 45, // ✅ เอียงตัวเลข 45 องศา กันซ้อนกัน
-          minRotation: 45,
-          autoSkip: true,
-          maxTicksLimit: 12 
+          font: { size: 10 }, 
+          maxRotation: 45, 
+          minRotation: 45, 
+          autoSkip: true, 
+          maxTicksLimit: timeframe === 'day' ? 12 : 7 
         },
         grid: { display: false }
       },
-      y: {
-        type: 'linear', display: true, position: 'left',
-        ticks: { color: '#3b82f6', font: { size: 10 } },
-        grid: { color: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }
+      y: { 
+        type: 'linear', 
+        position: 'left',
+        // ✅ ปรับ Range ให้เหมาะกับถัง 20 ซม. (ระยะเซนเซอร์ 52-70)
+        min: 50,
+        max: 75,
+        ticks: { color: '#3b82f6', font: { size: 10 }, stepSize: 5 },
+        grid: { color: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' } 
       },
-      y1: {
-        type: 'linear', display: viewMode === 'ALL_METRICS', position: 'right',
-        ticks: { color: '#f97316', font: { size: 10 } },
-        grid: { drawOnChartArea: false }
+      y1: { 
+        type: 'linear', 
+        display: viewMode === 'ALL_METRICS', 
+        position: 'right', 
+        min: 20, max: 50, // Range อุณหภูมิปกติ
+        ticks: { color: '#f97316', font: { size: 10 } }, 
+        grid: { drawOnChartArea: false } 
       },
-      y2: {
-        type: 'linear', display: viewMode === 'ALL_METRICS', position: 'right',
-        ticks: { color: '#06b6d4', font: { size: 10 } },
-        grid: { drawOnChartArea: false },
+      y2: { 
+        type: 'linear', 
+        display: viewMode === 'ALL_METRICS', 
+        position: 'right', 
+        min: 0, max: 100,
+        ticks: { color: '#06b6d4', font: { size: 10 } }, 
+        grid: { drawOnChartArea: false } 
       }
     }
   };
 
   return (
-    <div className="w-full h-full flex flex-col p-2">
-      {/* 🔘 ปุ่มเลือกโหมดการแสดงผล */}
+    <div className="w-full h-full flex flex-col p-1">
       <div className="flex flex-wrap gap-2 mb-6">
-        <button
-          onClick={() => setViewMode('ALL_METRICS')}
-          className={`px-4 py-2 rounded-xl text-[11px] font-black tracking-widest uppercase transition-all ${
-            viewMode === 'ALL_METRICS' 
-              ? 'bg-slate-900 dark:bg-blue-600 text-white shadow-xl scale-105' 
-              : 'bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'
-          }`}
-        >
-          📊 แสดงทั้งหมด
-        </button>
-        <div className="w-px h-8 bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block" />
-        <button onClick={() => setViewMode('LEVEL')} className={`px-4 py-2 rounded-xl text-[11px] font-bold transition-all ${viewMode === 'LEVEL' ? 'bg-blue-500 text-white shadow-lg' : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'}`}>🌊 น้ำ</button>
-        <button onClick={() => setViewMode('TEMP')} className={`px-4 py-2 rounded-xl text-[11px] font-bold transition-all ${viewMode === 'TEMP' ? 'bg-orange-500 text-white shadow-lg' : 'bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400'}`}>🌡️ อุณหภูมิ</button>
-        <button onClick={() => setViewMode('HUMIDITY')} className={`px-4 py-2 rounded-xl text-[11px] font-bold transition-all ${viewMode === 'HUMIDITY' ? 'bg-cyan-500 text-white shadow-lg' : 'bg-cyan-50 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400'}`}>💧 ความชื้น</button>
+        <button onClick={() => setViewMode('ALL_METRICS')} className={`px-4 py-2 rounded-xl text-[11px] font-black tracking-widest uppercase transition-all ${viewMode === 'ALL_METRICS' ? 'bg-slate-900 dark:bg-blue-600 text-white shadow-xl' : 'bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'}`}>📊 ทั้งหมด</button>
+        <button onClick={() => setViewMode('LEVEL')} className={`px-4 py-2 rounded-xl text-[11px] font-bold transition-all ${viewMode === 'LEVEL' ? 'bg-blue-500 text-white' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600'}`}>🌊 น้ำ</button>
+        <button onClick={() => setViewMode('TEMP')} className={`px-4 py-2 rounded-xl text-[11px] font-bold transition-all ${viewMode === 'TEMP' ? 'bg-orange-500 text-white' : 'bg-orange-50 dark:bg-orange-900/20 text-orange-600'}`}>🌡️ อุณหภูมิ</button>
+        <button onClick={() => setViewMode('HUMIDITY')} className={`px-4 py-2 rounded-xl text-[11px] font-bold transition-all ${viewMode === 'HUMIDITY' ? 'bg-cyan-500 text-white' : 'bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600'}`}>💧 ความชื้น</button>
       </div>
-
       <div className="flex-grow min-h-[350px] relative">
-        {chartData.datasets.length > 0 ? (
-          <Line data={chartData} options={options} />
-        ) : (
-          <div className="h-full flex items-center justify-center text-slate-400 text-xs italic border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-[2rem]">
-            ไม่มีข้อมูลแสดงผลในช่วงนี้...
-          </div>
-        )}
+        <Line data={chartData} options={options} />
       </div>
     </div>
   );

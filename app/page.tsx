@@ -40,7 +40,6 @@ export default function Home() {
     setIsMounted(true);
   }, []);
 
-  // ✅ ดึงข้อมูลโดยส่งค่า timeframe ไปหา API เสมอ
   const fetchData = useCallback(async (showLoading = false) => {
     if (showLoading) setIsLoading(true);
     try {
@@ -63,7 +62,6 @@ export default function Home() {
     }
   }, [timeframe]);
 
-  // ✅ เมื่อ timeframe เปลี่ยน ให้รีโหลดข้อมูลทันที
   useEffect(() => {
     fetchData(true);
     const interval = setInterval(() => fetchData(false), 5000);
@@ -89,88 +87,101 @@ export default function Home() {
   const currentTemp = Number(latestLog?.temperature ?? currentDevice?.temperature ?? 0);
   const currentHumid = Number(latestLog?.air_humidity ?? latestLog?.humidity ?? currentDevice?.humidity ?? 0);
 
+  // ✅ NEW LOGIC: คำนวณสถานะตามระยะน้ำที่พี่กำหนด (54 และ 61)
+  const getStatusInfo = (level: number) => {
+    if (level <= 54) return { label: "🔴 วิกฤต: น้ำเต็มถัง", color: "text-red-500", bg: "bg-red-50" };
+    if (level <= 61) return { label: "🟠 เตือน: น้ำครึ่งถัง", color: "text-orange-500", bg: "bg-orange-50" };
+    return { label: "🟢 ปกติ: ปริมาณน้ำต่ำ", color: "text-emerald-500", bg: "bg-emerald-50" };
+  };
+
+  const status = getStatusInfo(currentLevel);
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-8 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300">
 
-      {/* HEADER */}
-      <header className="max-w-7xl mx-auto flex justify-between items-center mb-8">
-        <div className="flex items-center gap-4">
-          <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg">
-            <Waves size={24}/>
-          </div>
+      {/* ✅ STICKY HEADER - ล็อกหัวเว็บ */}
+      <header className="sticky top-0 z-[100] w-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 md:px-8 py-4">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg">
+              <Waves size={24}/>
+            </div>
 
-          <div className="relative">
-            <button 
-              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="flex items-center gap-2 bg-white dark:bg-slate-900 px-4 py-2 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 font-bold text-sm uppercase transition-all active:scale-95"
-            >
-              {selectedDeviceMac === 'ALL' ? '🌍 Overview' : `📍 ${currentDevice?.name || 'Device'}`}
-              <ChevronDown size={16} />
-            </button>
+            <div className="relative">
+              <button 
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="flex items-center gap-2 bg-white dark:bg-slate-800 px-4 py-2 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 font-bold text-sm uppercase transition-all active:scale-95"
+              >
+                {selectedDeviceMac === 'ALL' ? '🌍 Overview' : `📍 ${currentDevice?.name || 'Device'}`}
+                <ChevronDown size={16} />
+              </button>
 
-            {isDropdownOpen && (
-              <div className="absolute top-full left-0 mt-2 w-56 bg-white dark:bg-slate-900 shadow-2xl rounded-2xl border border-slate-100 dark:border-slate-800 z-50 p-2 animate-in fade-in zoom-in duration-200">
-                <button
-                  onClick={() => { setSelectedDeviceMac('ALL'); setIsDropdownOpen(false); }}
-                  className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-xs font-bold uppercase transition-colors"
-                >
-                  🌍 Overview
-                </button>
-                {devices.map((d: any) => (
+              {isDropdownOpen && (
+                <div className="absolute top-full left-0 mt-2 w-56 bg-white dark:bg-slate-900 shadow-2xl rounded-2xl border border-slate-200 dark:border-slate-800 z-50 p-2 animate-in fade-in zoom-in duration-200">
                   <button
-                    key={d.mac}
-                    onClick={() => { setSelectedDeviceMac(d.mac); setIsDropdownOpen(false); }}
+                    onClick={() => { setSelectedDeviceMac('ALL'); setIsDropdownOpen(false); }}
                     className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-xs font-bold uppercase transition-colors"
                   >
-                    📍 {d.name}
+                    🌍 Overview
                   </button>
-                ))}
-              </div>
-            )}
+                  {devices.map((d: any) => (
+                    <button
+                      key={d.mac}
+                      onClick={() => { setSelectedDeviceMac(d.mac); setIsDropdownOpen(false); }}
+                      className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-xs font-bold uppercase transition-colors"
+                    >
+                      📍 {d.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-            className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:scale-110 active:scale-90"
-          >
-            {resolvedTheme === 'dark' ? <Sun size={20} className="text-yellow-500"/> : <Moon size={20} className="text-blue-600"/>}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+              className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:scale-110 active:scale-90"
+            >
+              {resolvedTheme === 'dark' ? <Sun size={20} className="text-yellow-500"/> : <Moon size={20} className="text-blue-600"/>}
+            </button>
 
-          <Link
-            href="/admin"
-            className="px-4 py-2 bg-slate-900 dark:bg-blue-600 text-white rounded-xl text-xs font-bold uppercase shadow-lg flex items-center gap-2 hover:opacity-90 transition-all hover:translate-y-[-2px]"
-          >
-            <Settings size={16}/> Admin
-          </Link>
+            <Link
+              href="/admin"
+              className="px-4 py-2 bg-slate-900 dark:bg-blue-600 text-white rounded-xl text-xs font-bold uppercase shadow-lg flex items-center gap-2 hover:opacity-90 transition-all hover:translate-y-[-2px]"
+            >
+              <Settings size={16}/> Admin
+            </Link>
+          </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto space-y-6">
+      {/* ✅ MAIN CONTENT */}
+      <main className="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
+        
         {/* METRICS */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard label="Water Level" val={currentLevel.toFixed(1)} unit="cm" icon={<Waves/>} color="text-blue-600" />
+          <MetricCard label="Water Level" val={currentLevel.toFixed(1)} unit="cm" icon={<Waves/>} color={status.color} />
           <MetricCard label="Temperature" val={currentTemp.toFixed(1)} unit="°C" icon={<Thermometer/>} color="text-orange-500" />
           <MetricCard label="Humidity" val={currentHumid.toFixed(0)} unit="%" icon={<Droplets/>} color="text-emerald-500" />
           <MetricCard 
-            label="Status" 
-            val={currentLevel >= 7 ? "CRITICAL" : "NORMAL"} 
+            label="Current Status" 
+            val={status.label} 
             unit="" 
             icon={<Activity/>} 
-            color={currentLevel >= 7 ? "text-red-500" : "text-emerald-500"} 
+            color={status.color} 
           />
         </div>
 
         {/* ANALYTICS */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-8 bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm min-h-[500px] flex flex-col">
+          <div className="lg:col-span-8 bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm min-h-[500px] flex flex-col">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
                 <Activity size={18} className="text-blue-600"/> 
                 Trend Analytics {isLoading && <span className="text-[10px] animate-pulse text-slate-400 font-normal ml-2 italic">Loading Data...</span>}
               </h3>
-              <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+              <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl shadow-inner">
                 {['day', 'week', 'month'].map(tf => (
                   <button
                     key={tf}
@@ -195,7 +206,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="lg:col-span-4 bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col items-center justify-center">
+          <div className="lg:col-span-4 bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center justify-center">
             <h3 className="text-xs font-black uppercase tracking-widest mb-4 self-start">Status Distribution</h3>
             <div className="w-full h-[300px]">
               <StatusDonut logs={displayLogs} isDark={resolvedTheme === 'dark'} />
@@ -204,26 +215,25 @@ export default function Home() {
         </div>
 
         {/* MAP */}
-        <div className="bg-white dark:bg-slate-900 p-2 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 p-2 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div className="h-[450px] w-full rounded-[2rem] overflow-hidden border border-slate-50 dark:border-slate-800">
             <DeviceMap devices={displayDevices} />
           </div>
         </div>
-
-      </div>
+      </main>
     </div>
   );
 }
 
 function MetricCard({ label, val, unit, icon, color }: any) {
   return (
-    <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col justify-between h-40 transition-all hover:shadow-md hover:translate-y-[-4px]">
+    <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between h-40 transition-all hover:shadow-md hover:translate-y-[-4px]">
       <div className="flex justify-between items-start">
         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{label}</span>
         <div className={`p-2 rounded-xl bg-slate-50 dark:bg-slate-800 ${color}`}>{icon}</div>
       </div>
       <div>
-        <span className={`text-4xl font-black ${color}`}>{val}</span>
+        <span className={`text-3xl font-black ${color} break-words leading-tight`}>{val}</span>
         <span className="text-xs font-bold text-slate-400 ml-1">{unit}</span>
       </div>
     </div>

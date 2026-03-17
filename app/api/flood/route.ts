@@ -5,7 +5,7 @@ import Device from "@/db/models/Device";
 
 export const dynamic = 'force-dynamic';
 
-// --- ฟังก์ชันส่ง LINE (เหมือนเดิม) ---
+// --- ฟังก์ชันส่ง LINE ---
 async function sendLineMessage(message: string) {
   const ACCESS_TOKEN = "JSP4AFcQD0fSIwxGBIQXT+W2h/sD3wcdPUaLPu5I4znODmfu9l1qLVMgP328d/CZbBD8vRxfgv0LMwtc5Hn3MnQEovNDRLejZJ/VstvpNgfi98Kv/RXYQUQMbgg4TEbDeii03sBTNE4L9hkwS7tV/wdB04t89/1O/w1cDnyilFU="; 
   const USER_ID = "Ub9d815d4781936f90560a1c8f243d859"; 
@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
 
     if (!device) return NextResponse.json({ error: "Device not found" }, { status: 404 });
 
+    // บันทึกลง WaterLog
     await WaterLog.create({
       mac: payload.mac,
       level: currentLevel,
@@ -43,13 +44,31 @@ export async function POST(request: NextRequest) {
       air_humidity: currentHumid
     });
 
-    if (device.isActive && currentLevel >= (device.criticalThreshold || 7.0)) {
-      const alertMsg = `🚨 [วิกฤต] ${device.name}\n🌊 ระดับน้ำ: ${currentLevel.toFixed(1)} cm\n🌡️ ${currentTemp.toFixed(1)}°C | 💧 ${currentHumid.toFixed(1)}%`;
-      await sendLineMessage(alertMsg);
+    // ✅ NEW ALERT LOGIC: แจ้งเตือนตามช่วงระยะน้ำ
+    if (device.isActive) {
+      let alertStatus = "";
+      
+      if (currentLevel <= 54) {
+        alertStatus = "🚨 [วิกฤต] น้ำเต็มถังแล้ว!";
+      } else if (currentLevel <= 61) {
+        alertStatus = "⚠️ [เตือน] น้ำเหลือครึ่งถัง";
+      }
+
+      // ส่ง LINE เฉพาะเมื่อเข้าเงื่อนไขเตือน (น้อยกว่าหรือเท่ากับ 61)
+      if (alertStatus !== "") {
+        const alertMsg = `${alertStatus}\n📍 ${device.name}\n🌊 ระยะน้ำ: ${currentLevel.toFixed(1)} cm\n🌡️ ${currentTemp.toFixed(1)}°C | 💧 ${currentHumid.toFixed(1)}%`;
+        await sendLineMessage(alertMsg);
+      }
     }
 
-    return NextResponse.json({ success: true, isBuzzerEnabled: device.isBuzzerEnabled, isActive: device.isActive });
-  } catch (error: any) { return NextResponse.json({ error: error.message }, { status: 500 }); }
+    return NextResponse.json({ 
+      success: true, 
+      isBuzzerEnabled: device.isBuzzerEnabled, 
+      isActive: device.isActive 
+    });
+  } catch (error: any) { 
+    return NextResponse.json({ error: error.message }, { status: 500 }); 
+  }
 }
 
 // --- ดึงข้อมูลย้อนหลังตาม Timeframe (Day/Week/Month) ---
@@ -57,11 +76,9 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
     
-    // ดึงค่าจาก Query String เช่น /api/flood?timeframe=week
     const { searchParams } = new URL(request.url);
     const timeframe = searchParams.get('timeframe') || 'day';
 
-    // คำนวณช่วงเวลาย้อนหลัง
     let startDate = new Date();
     if (timeframe === 'day') {
       startDate.setHours(startDate.getHours() - 24);
@@ -71,10 +88,9 @@ export async function GET(request: NextRequest) {
       startDate.setMonth(startDate.getMonth() - 1);
     }
 
-    // กรองข้อมูลตามเงื่อนไขเวลา
     const logs = await WaterLog.find({
       createdAt: { $gte: startDate }
-    }).sort({ createdAt: 1 }); // เรียงจากเก่าไปใหม่เพื่อให้กราฟวาดสวยๆ
+    }).sort({ createdAt: 1 });
 
     return NextResponse.json(logs);
   } catch (error: any) { 
