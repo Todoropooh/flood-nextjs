@@ -1,85 +1,147 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { Waves, Thermometer, Droplets, Activity, RefreshCw } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+
+import React, { useEffect, useState, useRef } from 'react';
+import { useTheme } from 'next-themes';
+import Link from 'next/link';
+import dynamic from 'next/dynamic';
+import WaterLevelChart from '@/components/WaterLevelChart';
+import StatusDonut from '@/components/StatusDonut';
+import { 
+  Waves, Settings, Sun, Moon, Activity, Thermometer, 
+  Droplets, ChevronDown, AlertTriangle, CheckCircle, Database
+} from 'lucide-react';
+
+// โหลดแผนที่แบบ Client-side เท่านั้น (กันจอขาว)
+const DeviceMap = dynamic(() => import('@/components/DeviceMap'), { 
+  ssr: false,
+  loading: () => <div className="h-full w-full bg-slate-100 animate-pulse flex items-center justify-center text-slate-400">กำลังโหลดแผนที่...</div>
+});
+
+export const dynamic = 'force-dynamic';
 
 export default function Home() {
-  const [history, setHistory] = useState<any[]>([]);
-  const [latest, setLatest] = useState<any>(null);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => { setMounted(true); }, []);
-
-  const fetchData = async () => {
-    try {
-      const res = await fetch(`/api/flood?t=${Date.now()}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setHistory(data);
-          if (data.length > 0) setLatest(data[data.length - 1]);
-        }
-      }
-    } catch (err) { console.error(err); }
-  };
+  const [logs, setLogs] = useState<any[]>([]);
+  const [devices, setDevices] = useState<any[]>([]);
+  const [selectedDeviceMac, setSelectedDeviceMac] = useState<string>('ALL');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  const [timeframe, setTimeframe] = useState('day');
+  const { setTheme, resolvedTheme } = useTheme();
 
   useEffect(() => {
+    setIsMounted(true);
     fetchData();
     const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [timeframe]);
 
-  if (!mounted) return <div className="min-h-screen bg-slate-50" />;
+  const fetchData = async () => {
+    try {
+      const t = Date.now();
+      const [logRes, devRes] = await Promise.all([
+        fetch(`/api/flood?timeframe=${timeframe}&t=${t}`),
+        fetch(`/api/devices?t=${t}`)
+      ]);
+      
+      if (logRes.ok && devRes.ok) {
+        const logData = await logRes.json();
+        const devData = await devRes.json();
+        setLogs(Array.isArray(logData) ? logData : []);
+        setDevices(Array.isArray(devData) ? devData : []);
+      }
+    } catch (err) {
+      console.error("Fetch error:", err);
+    }
+  };
+
+  if (!isMounted) return <div className="min-h-screen bg-slate-50" />;
+
+  // คำนวณค่าเพื่อแสดงผล
+  const displayDevices = selectedDeviceMac === 'ALL' ? devices : devices.filter(d => d.mac === selectedDeviceMac);
+  const displayLogs = selectedDeviceMac === 'ALL' ? logs : logs.filter(l => l.mac === selectedDeviceMac);
+  const latest = displayLogs.length > 0 ? displayLogs[displayLogs.length - 1] : (displayDevices[0] || null);
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans text-slate-900">
-      <header className="max-w-7xl mx-auto flex justify-between items-center mb-10">
-        <div>
-          <h1 className="text-3xl font-black text-blue-600 uppercase italic">Flood <span className="text-slate-900">Monitor</span></h1>
-          <p className="text-slate-500 text-xs tracking-widest uppercase">
-            Last Update: {latest?.createdAt ? new Date(latest.createdAt).toLocaleString('th-TH') : 'Waiting...'}
-          </p>
+      {/* Header */}
+      <header className="max-w-7xl mx-auto flex justify-between items-center mb-8">
+        <div className="flex items-center gap-4">
+          <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg"><Waves size={24}/></div>
+          <div>
+            <div className="relative">
+              <button 
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200 font-bold text-sm uppercase"
+              >
+                {selectedDeviceMac === 'ALL' ? '🌍 Overview' : `📍 ${displayDevices[0]?.name || 'Unknown'}`}
+                <ChevronDown size={16} />
+              </button>
+              {isDropdownOpen && (
+                <div className="absolute top-full left-0 mt-2 w-56 bg-white shadow-2xl rounded-2xl border border-slate-100 z-50 p-2">
+                  <button onClick={() => {setSelectedDeviceMac('ALL'); setIsDropdownOpen(false);}} className="w-full text-left px-4 py-2 hover:bg-slate-50 rounded-lg text-xs font-bold uppercase">🌍 Overview</button>
+                  {devices.map(d => (
+                    <button key={d.mac} onClick={() => {setSelectedDeviceMac(d.mac); setIsDropdownOpen(false);}} className="w-full text-left px-4 py-2 hover:bg-slate-50 rounded-lg text-xs font-bold uppercase">📍 {d.name}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-        <button onClick={fetchData} className="p-3 bg-white rounded-2xl shadow-sm border border-slate-200 hover:bg-slate-50 transition-all">
-          <RefreshCw size={20} className="text-blue-600" />
-        </button>
+        <div className="flex items-center gap-3">
+            <button onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')} className="p-2 bg-white rounded-xl border shadow-sm">
+                {resolvedTheme === 'dark' ? <Sun size={20}/> : <Moon size={20}/>}
+            </button>
+            <Link href="/admin" className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase shadow-lg flex items-center gap-2">
+                <Settings size={16}/> Admin
+            </Link>
+        </div>
       </header>
 
-      <div className="max-w-7xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
-        {/* ระดับน้ำ */}
-        <Card label="Max Level" val={Number(latest?.level || 0).toFixed(1)} unit="cm" icon={<Waves/>} color="text-blue-600" />
-        {/* อุณหภูมิ */}
-        <Card label="Temperature" val={Number(latest?.temperature || 0).toFixed(1)} unit="°C" icon={<Thermometer/>} color="text-orange-500" />
-        {/* ความชื้น */}
-        <Card label="Humidity" val={Number(latest?.air_humidity || 0).toFixed(0)} unit="%" icon={<Droplets/>} color="text-emerald-500" />
-        {/* สถานะ */}
-        <Card label="Status" val={latest?.level >= 7 ? "CRITICAL" : "NORMAL"} unit="" icon={<Activity/>} color={latest?.level >= 7 ? "text-red-500" : "text-emerald-500"} />
-      </div>
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Metric Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <MetricCard label="Max Level" val={Number(latest?.level || latest?.waterLevel || 0).toFixed(1)} unit="cm" icon={<Waves/>} color="text-blue-600" />
+          <MetricCard label="Temperature" val={Number(latest?.temperature || 0).toFixed(1)} unit="°C" icon={<Thermometer/>} color="text-orange-500" />
+          <MetricCard label="Humidity" val={Number(latest?.air_humidity || latest?.humidity || 0).toFixed(0)} unit="%" icon={<Droplets/>} color="text-emerald-500" />
+          <MetricCard label="Status" val={Number(latest?.level || latest?.waterLevel || 0) >= 7 ? "CRITICAL" : "NORMAL"} unit="" icon={<Activity/>} color={Number(latest?.level || latest?.waterLevel || 0) >= 7 ? "text-red-500" : "text-emerald-500"} />
+        </div>
 
-      <div className="max-w-7xl mx-auto bg-white p-6 md:p-10 rounded-[2.5rem] border border-slate-200 shadow-sm">
-        <h2 className="text-sm font-black uppercase tracking-widest mb-8 flex items-center gap-2">
-          <Activity size={18} className="text-blue-600"/> Analytics Trend
-        </h2>
-        <div className="h-[400px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={history}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#eee" vertical={false} />
-              <XAxis dataKey="createdAt" tick={false} />
-              <YAxis />
-              <Tooltip contentStyle={{borderRadius: '15px', border:'none', boxShadow:'0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
-              <Legend />
-              <Line type="monotone" dataKey="level" name="Level (cm)" stroke="#2563eb" strokeWidth={4} dot={false} />
-              <Line type="monotone" dataKey="temperature" name="Temp (°C)" stroke="#f97316" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="air_humidity" name="Humid (%)" stroke="#10b981" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
+        {/* Charts Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-8 bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm h-[450px] flex flex-col">
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Activity size={18} className="text-blue-600"/> Trend Analytics</h3>
+                <div className="flex bg-slate-100 p-1 rounded-xl">
+                    {['day', 'week', 'month'].map(tf => (
+                        <button key={tf} onClick={() => setTimeframe(tf)} className={`px-3 py-1 text-[10px] font-bold uppercase rounded-lg ${timeframe === tf ? 'bg-white shadow-sm' : 'text-slate-500'}`}>{tf}</button>
+                    ))}
+                </div>
+            </div>
+            <div className="flex-grow">
+                <WaterLevelChart data={displayLogs} timeframe={timeframe} isDark={resolvedTheme === 'dark'} />
+            </div>
+          </div>
+
+          <div className="lg:col-span-4 bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col items-center justify-center">
+            <h3 className="text-xs font-black uppercase tracking-widest mb-4 self-start">Status Distribution</h3>
+            <div className="w-full h-[300px]">
+                <StatusDonut logs={displayLogs} isDark={resolvedTheme === 'dark'} />
+            </div>
+          </div>
+        </div>
+
+        {/* Map Section */}
+        <div className="bg-white p-2 rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
+          <div className="h-[450px] w-full rounded-[2rem] overflow-hidden">
+            <DeviceMap devices={displayDevices} />
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function Card({ label, val, unit, icon, color }: any) {
+function MetricCard({ label, val, unit, icon, color }: any) {
   return (
     <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between h-40">
       <div className="flex justify-between items-start">
