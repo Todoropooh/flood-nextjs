@@ -10,7 +10,7 @@ import StatusDonut from '@/components/StatusDonut';
 
 import { 
   Waves, Settings, Sun, Moon, Activity, Thermometer, 
-  Droplets, ChevronDown
+  Droplets, ChevronDown, Bell, AlertTriangle // ✅ เพิ่ม Bell และ AlertTriangle
 } from 'lucide-react';
 
 // ✅ dynamic import (no SSR) ป้องกันแผนที่ทำจอขาว
@@ -33,6 +33,9 @@ export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   const [timeframe, setTimeframe] = useState('day');
   const [isLoading, setIsLoading] = useState(false);
+  
+  // ✅ State สำหรับควบคุมการปิด/เปิด Pop-up แจ้งเตือน
+  const [showPushNoti, setShowPushNoti] = useState(true);
 
   const { setTheme, resolvedTheme } = useTheme();
 
@@ -83,21 +86,57 @@ export default function Home() {
   const latestLog = displayLogs.length > 0 ? displayLogs[displayLogs.length - 1] : null;
   const currentDevice = displayDevices.length > 0 ? displayDevices[0] : null;
 
-  const currentLevel = Number(latestLog?.level ?? currentDevice?.waterLevel ?? 0);
+  // ✅ ดึงระยะจากเซนเซอร์ ถ้าไม่มีข้อมูลให้มองว่าถังว่าง (ระยะ = 70)
+  const sensorDist = Number(latestLog?.level ?? currentDevice?.waterLevel ?? 70);
   const currentTemp = Number(latestLog?.temperature ?? currentDevice?.temperature ?? 0);
   const currentHumid = Number(latestLog?.air_humidity ?? latestLog?.humidity ?? currentDevice?.humidity ?? 0);
 
-  // ✅ NEW LOGIC: คำนวณสถานะตามระยะน้ำที่พี่กำหนด (54 และ 61)
-  const getStatusInfo = (level: number) => {
-    if (level <= 54) return { label: "🔴 วิกฤต: น้ำเต็มถัง", color: "text-red-500", bg: "bg-red-50" };
-    if (level <= 61) return { label: "🟠 เตือน: น้ำครึ่งถัง", color: "text-orange-500", bg: "bg-orange-50" };
+  // ✅ NEW LOGIC: คำนวณความสูงน้ำในถังจริง (เซนเซอร์ติดตั้งสูง 70 ซม.)
+  let waterInTank = 70 - sensorDist;
+  if (waterInTank > 20) waterInTank = 20; // ล็อกไม่ให้เกินความสูงกล่อง 20 ซม.
+  if (waterInTank < 0) waterInTank = 0;   // ล็อกไม่ให้ติดลบ
+
+  // ✅ กลับมาแสดง Noti ใหม่ถ้าระดับน้ำเปลี่ยนและแตะระดับเตือนภัย
+  useEffect(() => {
+    if (waterInTank >= 10) setShowPushNoti(true);
+  }, [waterInTank]);
+
+  // ✅ เปลี่ยนมาเช็คสถานะจาก "ความสูงน้ำ" ที่แปลงมาแล้ว
+  const getStatusInfo = (water: number) => {
+    if (water >= 17) return { label: "🔴 วิกฤต: น้ำเต็มถัง", color: "text-red-500", bg: "bg-red-50" };
+    if (water >= 10) return { label: "🟠 เตือน: น้ำครึ่งถัง", color: "text-orange-500", bg: "bg-orange-50" };
     return { label: "🟢 ปกติ: ปริมาณน้ำต่ำ", color: "text-emerald-500", bg: "bg-emerald-50" };
   };
 
-  const status = getStatusInfo(currentLevel);
+  const status = getStatusInfo(waterInTank);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300 relative">
+
+      {/* ✅ PUSH NOTIFICATION (Pop-up มุมขวาล่าง เด้งเมื่อน้ำ >= 10 ซม.) */}
+      {showPushNoti && waterInTank >= 10 && (
+        <div className="fixed bottom-8 right-8 z-[200] animate-bounce shadow-2xl">
+          <div className={`p-4 rounded-2xl flex items-center gap-4 text-white shadow-xl border-2 border-white/20
+            ${waterInTank >= 17 ? 'bg-red-500' : 'bg-orange-500'}`}
+          >
+            <AlertTriangle size={32} className="animate-pulse" />
+            <div className="pr-6">
+              <h4 className="font-bold text-lg leading-tight">
+                {waterInTank >= 17 ? 'วิกฤต! น้ำเต็มถัง' : 'เตือนภัย! น้ำระดับอันตราย'}
+              </h4>
+              <p className="text-sm font-medium opacity-90 mt-0.5">
+                ระดับน้ำปัจจุบัน {waterInTank.toFixed(1)} cm
+              </p>
+            </div>
+            <button 
+              onClick={() => setShowPushNoti(false)} 
+              className="absolute top-2 right-2 p-1 hover:bg-white/20 rounded-full transition-colors"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ✅ STICKY HEADER - ล็อกหัวเว็บ */}
       <header className="sticky top-0 z-[100] w-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 md:px-8 py-4">
@@ -139,6 +178,19 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-3">
+            
+            {/* ✅ ICON กระดิ่งแจ้งเตือน พร้อมวงกลมกระพริบ */}
+            <button className="relative p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:scale-110 active:scale-90">
+              <Bell size={20} className="text-slate-600 dark:text-slate-300" />
+              {/* จุดแดงจะกระพริบเมื่อน้ำ >= 10 */}
+              {waterInTank >= 10 && (
+                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${waterInTank >= 17 ? 'bg-red-400' : 'bg-orange-400'}`}></span>
+                  <span className={`relative inline-flex rounded-full h-3 w-3 border-2 border-white dark:border-slate-900 ${waterInTank >= 17 ? 'bg-red-500' : 'bg-orange-500'}`}></span>
+                </span>
+              )}
+            </button>
+
             <button
               onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
               className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:scale-110 active:scale-90"
@@ -161,7 +213,7 @@ export default function Home() {
         
         {/* METRICS */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard label="Water Level" val={currentLevel.toFixed(1)} unit="cm" icon={<Waves/>} color={status.color} />
+          <MetricCard label="Water Level" val={waterInTank.toFixed(1)} unit="cm" icon={<Waves/>} color={status.color} />
           <MetricCard label="Temperature" val={currentTemp.toFixed(1)} unit="°C" icon={<Thermometer/>} color="text-orange-500" />
           <MetricCard label="Humidity" val={currentHumid.toFixed(0)} unit="%" icon={<Droplets/>} color="text-emerald-500" />
           <MetricCard 

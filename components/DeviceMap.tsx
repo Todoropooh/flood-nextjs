@@ -30,13 +30,21 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
     : defaultCenter;
 
   const createCustomIcon = (device: any) => {
-    const wl = device.waterLevel || 0;
-    const isCritical = wl >= (device.criticalThreshold || 7);
-    const isWarning = wl >= (device.warningThreshold || 3);
+    // ✅ 1. รับค่าระยะเซนเซอร์ (ถ้าไม่มีให้ถือว่าว่าง = 70)
+    const rawDist = Number(device.waterLevel ?? device.level ?? 70);
     
-    const dotColor = isCritical ? 'bg-red-500' : isWarning ? 'bg-orange-500' : 'bg-blue-500';
-    const textColor = isCritical ? 'text-red-600 dark:text-red-400' : isWarning ? 'text-orange-600 dark:text-orange-400' : 'text-blue-600 dark:text-blue-400';
-    const glowClass = isCritical ? 'shadow-[0_0_15px_rgba(239,68,68,0.8)]' : isWarning ? 'shadow-[0_0_15px_rgba(249,115,22,0.8)]' : 'shadow-[0_0_15px_rgba(59,130,246,0.8)]';
+    // ✅ 2. คำนวณความสูงน้ำ (ติดตั้ง 70 ซม. กล่องสูง 20 ซม.)
+    let wl = 70 - rawDist;
+    if (wl < 0) wl = 0;
+    if (wl > 20) wl = 20;
+    
+    // ✅ 3. เช็คเงื่อนไขสีหมุด (วิกฤต >= 17, เตือน >= 10)
+    const isCritical = wl >= 17;
+    const isWarning = wl >= 10;
+    
+    const dotColor = isCritical ? 'bg-red-500' : isWarning ? 'bg-orange-500' : 'bg-emerald-500';
+    const textColor = isCritical ? 'text-red-600 dark:text-red-400' : isWarning ? 'text-orange-600 dark:text-orange-400' : 'text-emerald-600 dark:text-emerald-400';
+    const glowClass = isCritical ? 'shadow-[0_0_15px_rgba(239,68,68,0.8)]' : isWarning ? 'shadow-[0_0_15px_rgba(249,115,22,0.8)]' : 'shadow-[0_0_15px_rgba(16,185,129,0.8)]';
 
     const htmlString = `
       <div class="relative flex flex-col items-center -mt-8 cursor-pointer hover:-translate-y-1 transition-transform group z-50">
@@ -66,7 +74,6 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
       className="w-full h-full rounded-[2rem] z-0"
       zoomControl={false} 
     >
-      {/* 🟢 ถอด key={tileUrl} ออก เพื่อแก้บั๊ก Cannot read properties of undefined '_leaflet_pos' */}
       <TileLayer
         attribution='&copy; <a href="https://carto.com/">CARTO</a>'
         url={tileUrl}
@@ -82,8 +89,8 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
            >
              <Popup className="custom-popup">
                <div className="text-center p-1 font-sans">
-                 <h3 className="font-bold text-sm text-slate-800">{device.name}</h3>
-                 <p className="text-[10px] text-slate-500 font-mono mt-1 uppercase">{device.mac}</p>
+                 <h3 className="font-bold text-sm text-slate-800">${device.name}</h3>
+                 <p className="text-[10px] text-slate-500 font-mono mt-1 uppercase">${device.mac}</p>
                </div>
              </Popup>
            </Marker>

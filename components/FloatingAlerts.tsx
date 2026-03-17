@@ -1,122 +1,72 @@
-// components/FloatingAlerts.tsx
+// components/RecentLogs.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-// 🟢 เพิ่ม Clock เข้ามาตรงนี้ครับ
-import { Bell, X, AlertTriangle, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+interface Log {
+  _id: string;
+  level: number;
+  status: string;
+  createdAt: string;
+}
 
-export default function FloatingAlerts({ alerts }: { alerts: any[] }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(alerts.length);
-
-  // อัปเดตตัวเลขแจ้งเตือน (ล้างค่าเมื่อกดเปิด)
-  useEffect(() => {
-    if (isOpen) {
-      setUnreadCount(0);
-    } else {
-      setUnreadCount(alerts.length);
-    }
-  }, [isOpen, alerts.length]);
-
+export default function RecentLogs({ logs }: { logs: Log[] }) {
   return (
-    <div className="fixed bottom-6 right-6 z-[100] flex flex-col items-end">
-      
-      {/* --- Popup Panel (กระจกเบลอ + Animation เปิด/ปิด) --- */}
-      <div 
-        className={`
-          mb-4 w-[calc(100vw-3rem)] sm:w-96 
-          bg-white/70 dark:bg-[#1C1C1E]/70 backdrop-blur-3xl 
-          border border-white/50 dark:border-white/10 
-          shadow-[0_20px_40px_rgba(0,0,0,0.1)] dark:shadow-[0_20px_40px_rgba(0,0,0,0.5)]
-          rounded-[2rem] overflow-hidden origin-bottom-right
-          transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]
-          ${isOpen 
-            ? 'opacity-100 scale-100 translate-y-0 visible' 
-            : 'opacity-0 scale-90 translate-y-10 invisible pointer-events-none'
-          }
-        `}
-      >
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-200/50 dark:border-slate-700/50 flex justify-between items-center bg-white/50 dark:bg-black/20 backdrop-blur-md">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-500/10 text-blue-500 dark:text-blue-400 rounded-full">
-              <Bell size={16} />
-            </div>
-            <h3 className="text-sm font-bold tracking-tight text-slate-800 dark:text-white">Notifications</h3>
-          </div>
-          <button 
-            onClick={() => setIsOpen(false)} 
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 rounded-full transition-all"
-          >
-            <X size={16} />
-          </button>
-        </div>
-        
-        {/* Alerts List */}
-        <div className="max-h-[350px] overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
-          {alerts.length === 0 ? (
-            <div className="p-10 text-center text-slate-400 dark:text-slate-500 flex flex-col items-center gap-3">
-              <CheckCircle2 size={36} className="opacity-30" />
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em]">All Clear</p>
-            </div>
-          ) : (
-            <div className="space-y-2 p-2">
-              {alerts.map((alert, i) => (
-                <div 
-                  key={i} 
-                  className="p-4 rounded-[1.5rem] bg-white/60 dark:bg-black/20 border border-white/50 dark:border-white/5 hover:bg-white dark:hover:bg-black/40 transition-colors flex gap-4 shadow-sm"
-                >
-                  <div className="mt-1">
-                    {alert.status === 'Critical' ? (
-                      <div className="p-2 bg-red-500/10 rounded-full"><AlertTriangle size={18} className="text-red-500" /></div>
-                    ) : (
-                      <div className="p-2 bg-amber-500/10 rounded-full"><AlertCircle size={18} className="text-amber-500" /></div>
-                    )}
-                  </div>
-                  <div>
-                    <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${alert.status === 'Critical' ? 'text-red-500' : 'text-amber-500'}`}>
-                      {alert.status} ALERT
-                    </p>
-                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200 leading-tight">
-                      ตรวจพบระดับน้ำผิดปกติ: {alert.level} cm
-                    </p>
-                    <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-2 flex items-center gap-1">
-                      {/* ตอนนี้มี Clock แล้ว ไม่ Error แน่นอนครับ */}
-                      <Clock size={10} /> {new Date(alert.createdAt).toLocaleString('th-TH')}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+    <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden shadow-xl h-full">
+      <div className="p-4 border-b border-slate-700 bg-slate-800/50">
+        <h3 className="font-semibold text-slate-200">ประวัติล่าสุด (Recent Logs)</h3>
       </div>
+      <div className="overflow-y-auto max-h-[300px]">
+        <table className="w-full text-sm text-left">
+          <thead className="text-xs text-slate-400 uppercase bg-slate-900/50 sticky top-0">
+            <tr>
+              <th className="px-6 py-3">เวลา</th>
+              <th className="px-6 py-3">ระดับน้ำ (cm)</th>
+              <th className="px-6 py-3">สถานะ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* ✅ ใช้ .reverse() เพื่อให้ข้อมูลล่าสุดเด้งมาอยู่บรรทัดแรกของตาราง */}
+            {[...logs].reverse().map((log) => {
+              
+              // ✅ 1. แปลงระยะเซนเซอร์เป็นความสูงน้ำจริง (0-20 ซม.)
+              const rawDist = Number(log.level) || 70;
+              let waterLevel = 70 - rawDist;
+              if (waterLevel > 20) waterLevel = 20;
+              if (waterLevel < 0) waterLevel = 0;
 
-      {/* --- Floating Button (ปุ่มกระดิ่งมุมขวาล่าง) --- */}
-      <button 
-        onClick={() => setIsOpen(!isOpen)}
-        className={`
-          group relative p-4 
-          bg-white/80 dark:bg-[#1C1C1E]/80 backdrop-blur-xl 
-          border border-white/50 dark:border-white/10 
-          shadow-[0_8px_30px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)]
-          rounded-full transition-all duration-300
-          ${isOpen ? 'scale-90 bg-slate-100 dark:bg-[#2C2C2E]' : 'hover:scale-105 active:scale-95'}
-        `}
-      >
-        <Bell 
-          size={24} 
-          className={`transition-all duration-500 ${isOpen ? 'text-blue-500 rotate-12' : 'text-slate-700 dark:text-slate-200 group-hover:rotate-12'}`} 
-        />
-        
-        {/* จุดแจ้งเตือนสีแดง (Red Badge) */}
-        {unreadCount > 0 && !isOpen && (
-          <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 border-[3px] border-white dark:border-[#1C1C1E] text-[10px] font-black text-white shadow-sm animate-in zoom-in duration-300">
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
+              // ✅ 2. คำนวณสถานะใหม่ให้ตรงกับหน้า Dashboard (วิกฤต >= 17, เตือน >= 10)
+              let displayStatus = 'Normal';
+              if (waterLevel >= 17) displayStatus = 'Critical';
+              else if (waterLevel >= 10) displayStatus = 'Warning';
+
+              return (
+                <tr key={log._id} className="border-b border-slate-700 hover:bg-slate-700/50 transition-colors">
+                  <td className="px-6 py-3 font-mono text-slate-300">
+                    {new Date(log.createdAt).toLocaleTimeString('th-TH')}
+                  </td>
+                  
+                  {/* ✅ โชว์ความสูงน้ำจริง */}
+                  <td className="px-6 py-3 font-medium text-white">
+                    {waterLevel.toFixed(1)} cm
+                  </td>
+                  
+                  <td className="px-6 py-3">
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold
+                      ${displayStatus === 'Critical' ? 'bg-red-500/20 text-red-400' :
+                        displayStatus === 'Warning' ? 'bg-orange-500/20 text-orange-400' :
+                        'bg-emerald-500/20 text-emerald-400'
+                      }`}>
+                      {displayStatus}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {logs.length === 0 && (
+          <div className="p-6 text-center text-slate-500">ยังไม่มีข้อมูล</div>
         )}
-      </button>
-
+      </div>
     </div>
   );
 }
