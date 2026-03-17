@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useTheme } from 'next-themes';
 import Link from 'next/link';
-import dynamicImport from 'next/dynamic';
+import dynamic from 'next/dynamic';
 
 import WaterLevelChart from '@/components/WaterLevelChart';
 import StatusDonut from '@/components/StatusDonut';
@@ -15,8 +15,8 @@ import {
   Droplets, ChevronDown, Bell, AlertTriangle 
 } from 'lucide-react';
 
-// ✅ dynamic import แผนที่แบบ No SSR
-const DeviceMap = dynamicImport(() => import('@/components/DeviceMap'), { 
+// ✅ แผนที่แบบ No SSR
+const DeviceMap = dynamic(() => import('@/components/DeviceMap'), { 
   ssr: false,
   loading: () => (
     <div className="h-[450px] w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-[2rem] flex items-center justify-center text-slate-400">
@@ -36,7 +36,7 @@ export default function Home() {
   
   // ✅ ระบบแจ้งเตือน
   const [showPushNoti, setShowPushNoti] = useState(false);
-  const [lastAlertLevel, setLastAlertLevel] = useState(0); // เก็บค่าล่าสุดไว้เช็ค loop
+  const [lastAlertState, setLastAlertState] = useState<'NONE' | 'SHOWN'>('NONE');
 
   const { setTheme, resolvedTheme } = useTheme();
 
@@ -71,26 +71,37 @@ export default function Home() {
 
   if (!isMounted) return <div className="min-h-screen bg-slate-50 dark:bg-slate-950" />;
 
+  // ✅ การจัดการฟิลเตอร์อุปกรณ์
+  const normalize = (v: any) => String(v || '').trim().toLowerCase();
+  
+  const displayDevices = selectedDeviceMac === 'ALL'
+      ? devices
+      : devices.filter(d => normalize(d.mac) === normalize(selectedDeviceMac));
+
   const displayLogs = selectedDeviceMac === 'ALL'
       ? logs
-      : logs.filter(l => String(l.mac || l.device_id).toLowerCase() === selectedDeviceMac.toLowerCase());
+      : logs.filter(l => normalize(l.mac || l.device_id) === normalize(selectedDeviceMac));
 
   const latestLog = displayLogs.length > 0 ? displayLogs[displayLogs.length - 1] : null;
+  const currentDevice = displayDevices.length > 0 ? displayDevices[0] : null;
 
-  // ✅ 1. คำนวณระดับน้ำ (Safety Check)
-  const sensorDist = Number(latestLog?.level ?? 70);
+  // ✅ 1. คำนวณระดับน้ำ (0-20 cm)
+  const sensorDist = Number(latestLog?.level ?? currentDevice?.waterLevel ?? 70);
   let waterInTank = 70 - sensorDist;
   if (waterInTank > 20) waterInTank = 20;
   if (waterInTank < 0) waterInTank = 0;
 
-  // ✅ 2. แก้ปัญหา Infinite Loop (#Error 310) 🎯
-  // จะสั่งเปิด Noti เฉพาะเมื่อระดับน้ำ "เปลี่ยนข้ามเกณฑ์" เท่านั้น ไม่สั่งทุกครั้งที่ Render
-  if (waterInTank >= 10 && lastAlertLevel < 10) {
+  // ✅ 2. อุณหภูมิและความชื้น
+  const currentTemp = Number(latestLog?.temperature ?? currentDevice?.temperature ?? 0);
+  const currentHumid = Number(latestLog?.humidity ?? latestLog?.air_humidity ?? currentDevice?.humidity ?? 0);
+
+  // ✅ 3. ป้องกัน Infinite Loop แจ้งเตือน
+  if (waterInTank >= 10 && lastAlertState === 'NONE') {
     setShowPushNoti(true);
-    setLastAlertLevel(waterInTank);
-  } else if (waterInTank < 10 && lastAlertLevel >= 10) {
+    setLastAlertState('SHOWN');
+  } else if (waterInTank < 10 && lastAlertState === 'SHOWN') {
     setShowPushNoti(false);
-    setLastAlertLevel(waterInTank);
+    setLastAlertState('NONE');
   }
 
   const getStatusInfo = (w: number) => {
@@ -106,7 +117,7 @@ export default function Home() {
 
       {/* Pop-up Notification */}
       {showPushNoti && waterInTank >= 10 && (
-        <div className="fixed bottom-8 right-8 z-[200] animate-in slide-in-from-right duration-300">
+        <div className="fixed bottom-8 right-8 z-[200] animate-bounce">
           <div className={`p-4 rounded-2xl flex items-center gap-4 text-white shadow-2xl border-2 border-white/20 ${status.bg}`}>
             <AlertTriangle size={32} className="animate-pulse" />
             <div className="pr-6">
@@ -123,7 +134,22 @@ export default function Home() {
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-4">
             <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg"><Waves size={24}/></div>
-            <div className="font-black text-xl tracking-tighter hidden md:block uppercase">Flood-Next</div>
+            
+            {/* ✅ Dropdown เลือกอุปกรณ์ กลับมาแล้ว */}
+            <div className="relative">
+              <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="flex items-center gap-2 bg-white dark:bg-slate-800 px-4 py-2 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 font-bold text-sm uppercase transition-all">
+                {selectedDeviceMac === 'ALL' ? '🌍 Overview' : `📍 ${currentDevice?.name || 'Device'}`}
+                <ChevronDown size={16} />
+              </button>
+              {isDropdownOpen && (
+                <div className="absolute top-full left-0 mt-2 w-56 bg-white dark:bg-slate-900 shadow-2xl rounded-2xl border border-slate-200 dark:border-slate-800 z-50 p-2">
+                  <button onClick={() => { setSelectedDeviceMac('ALL'); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-xs font-bold uppercase transition-colors">🌍 Overview</button>
+                  {devices.map((d: any) => (
+                    <button key={d.mac} onClick={() => { setSelectedDeviceMac(d.mac); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-xs font-bold uppercase transition-colors">📍 {d.name}</button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -149,8 +175,8 @@ export default function Home() {
       <main className="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard label="Water Level" val={waterInTank.toFixed(1)} unit="cm" icon={<Waves/>} color={status.color} />
-          <MetricCard label="Temp" val={(Number(latestLog?.temperature) || 0).toFixed(1)} unit="°C" icon={<Thermometer/>} color="text-orange-500" />
-          <MetricCard label="Humid" val={(Number(latestLog?.humidity || latestLog?.air_humidity) || 0).toFixed(0)} unit="%" icon={<Droplets/>} color="text-emerald-500" />
+          <MetricCard label="Temp" val={currentTemp.toFixed(1)} unit="°C" icon={<Thermometer/>} color="text-orange-500" />
+          <MetricCard label="Humid" val={currentHumid.toFixed(0)} unit="%" icon={<Droplets/>} color="text-emerald-500" />
           <MetricCard label="Status" val={status.label} unit="" icon={<Activity/>} color={status.color} />
         </div>
 
@@ -164,7 +190,7 @@ export default function Home() {
                 ))}
               </div>
             </div>
-            <div className="flex-grow"><WaterLevelChart data={displayLogs} timeframe={timeframe} isDark={resolvedTheme === 'dark'} /></div>
+            <div className="flex-grow"><WaterLevelChart data={displayLogs} timeframe={timeframe} isDark={resolvedTheme === 'dark'} devices={devices} selectedDeviceMac={selectedDeviceMac} /></div>
           </div>
           <WaterTank level={waterInTank} />
         </div>
@@ -179,8 +205,11 @@ export default function Home() {
           </div>
         </div>
 
+        {/* ✅ แผนที่กลับมาแล้ว พร้อมส่งข้อมูล displayDevices เข้าไป */}
         <div className="bg-white dark:bg-slate-900 p-2 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-          <DeviceMap devices={devices} />
+          <div className="h-[450px] w-full rounded-[2rem] overflow-hidden">
+            <DeviceMap devices={displayDevices} />
+          </div>
         </div>
       </main>
     </div>
