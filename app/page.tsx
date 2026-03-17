@@ -52,20 +52,25 @@ export default function Home() {
 
   const fetchData = async () => {
     try {
-      // ✨ เพิ่ม t เพื่อป้องกัน Cache ของเบราว์เซอร์
-      const logRes = await fetch(`/api/flood?timeframe=${timeframe}&t=${Date.now()}`, { cache: 'no-store' });
-      if (logRes.ok) {
+      const timestamp = Date.now();
+      // ✨ ใช้ Promise.all ดึงข้อมูลพร้อมกัน ป้องกันการ render ผิดจังหวะ
+      const [logRes, deviceRes] = await Promise.all([
+        fetch(`/api/flood?timeframe=${timeframe}&t=${timestamp}`, { cache: 'no-store' }),
+        fetch(`/api/devices?t=${timestamp}`, { cache: 'no-store' })
+      ]);
+
+      if (logRes.ok && deviceRes.ok) {
         const logData = await logRes.json();
-        setLogs(logData || []);
-      }
-      
-      const deviceRes = await fetch(`/api/devices?t=${Date.now()}`, { cache: 'no-store' });
-      if (deviceRes.ok) {
         const devData = await deviceRes.json();
+        
+        // ✨ ใส่ Fallback Array ว่าง เพื่อไม่ให้เป็น null/undefined
+        setLogs(logData || []);
         setDevices(devData || []);
-        checkAndNotify(devData || []); 
+        if (devData) checkAndNotify(devData);
       }
-    } catch (e) { console.error("Fetch error:", e); }
+    } catch (e) { 
+      console.error("Fetch error:", e); 
+    }
   };
 
   // 🔔 ฟังก์ชันจัดการ Push Notification
@@ -107,7 +112,7 @@ export default function Home() {
     setIsMounted(true);
     fetchData();
     if (typeof window !== "undefined" && "Notification" in window) Notification.requestPermission();
-    setTimeout(() => setShowUI(true), 150);
+    setTimeout(() => setShowUI(true), 250); // ✨ เพิ่มเวลาดีเลย์นิดนึงให้ข้อมูลมาครบ
     const interval = setInterval(fetchData, 5000); 
     return () => clearInterval(interval);
   }, [timeframe]);
@@ -124,15 +129,15 @@ export default function Home() {
     const d = displayDevices[0];
     currentLevel = d.waterLevel ?? 0;
     currentTemp = d.temperature ?? 0;
-    currentHum = d.humidity ?? 0;
+    currentHum = d.humidity ?? d.air_humidity ?? 0;
     lastUpdateTime = d.updatedAt || Date.now();
     if (currentLevel >= (d.criticalThreshold || 7)) systemStatus = 'CRITICAL';
     else if (currentLevel >= (d.warningThreshold || 3)) systemStatus = 'WARNING';
   } else if (devices.length > 0) {
-    // ✨ ใช้ ?? เพื่อป้องกันการดึงค่า null แล้วกลายเป็น NaN
+    // ✨ ใช้ ?? เพื่อป้องกันการดึงค่า null แล้วกลายเป็น NaN หรือ Infinity
     currentLevel = Math.max(...devices.map(d => d.waterLevel ?? 0)); 
-    currentTemp = devices.reduce((sum, d) => sum + (d.temperature ?? 0), 0) / devices.length;
-    currentHum = devices.reduce((sum, d) => sum + (d.humidity ?? 0), 0) / devices.length;
+    currentTemp = devices.reduce((sum, d) => sum + (d.temperature ?? 0), 0) / (devices.length || 1);
+    currentHum = devices.reduce((sum, d) => sum + (d.humidity ?? d.air_humidity ?? 0), 0) / (devices.length || 1);
     lastUpdateTime = devices[0]?.updatedAt || Date.now(); 
     if (devices.some(d => (d.waterLevel ?? 0) >= (d.criticalThreshold || 7))) systemStatus = 'CRITICAL';
     else if (devices.some(d => (d.waterLevel ?? 0) >= (d.warningThreshold || 3))) systemStatus = 'WARNING';
@@ -224,7 +229,7 @@ export default function Home() {
               {devices.map((device) => {
                 const wl = device.waterLevel || 0;
                 const temp = device.temperature || 0;
-                const hum = device.humidity || 0;
+                const hum = device.humidity || device.air_humidity || 0;
                 
                 const status = getStatusDesign(wl, device.warningThreshold, device.criticalThreshold);
                 const percent = Math.min((wl / (device.criticalThreshold || 10)) * 100, 100);
