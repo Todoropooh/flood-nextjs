@@ -54,13 +54,17 @@ export default function WaterLevelChart({
       label,
       data: labels.map((_, index) => {
         if (filtered.length === 0) return null;
-        // กระจายข้อมูลจริงลงตามสัดส่วนของแกน X
         const dataIndex = Math.floor((index / labels.length) * filtered.length);
         const log = filtered[dataIndex];
         
         if (key === 'level') {
-          const val = Number(log?.level ?? log?.water_level);
-          return val > 0 ? val : null; // กันค่า 0 ทำกราฟตก
+          // ✅ เปลี่ยนค่าระยะเซนเซอร์ เป็น "ความสูงน้ำในถังจริง (0-20cm)"
+          const rawDist = Number(log?.level ?? log?.water_level);
+          if (!rawDist || rawDist <= 0) return null;
+          let waterInTank = 70 - rawDist; // อิงจากติดตั้งสูง 70 ซม.
+          if (waterInTank < 0) waterInTank = 0;
+          if (waterInTank > 20) waterInTank = 20;
+          return waterInTank;
         }
         if (key === 'temp') return Number(log?.temperature) || null;
         return Number(log?.air_humidity ?? log?.humidity) || null;
@@ -77,17 +81,18 @@ export default function WaterLevelChart({
 
     const datasets: any[] = [];
     if (viewMode === 'ALL_METRICS') {
-      datasets.push(createDataset('🌊 ระดับน้ำ (cm)', 'level', '#3b82f6', 'y'));
+      datasets.push(createDataset('🌊 ระดับน้ำในถัง (cm)', 'level', '#3b82f6', 'y'));
       datasets.push(createDataset('🌡️ อุณหภูมิ (°C)', 'temp', '#f97316', 'y1'));
       datasets.push(createDataset('💧 ความชื้น (%)', 'humid', '#06b6d4', 'y2'));
     } else {
+      // ✅ แก้ให้ตอนแยกกราฟ ใช้ แกน Y ของตัวเอง ไม่ไปแย่งกันใช้แกน y อันเดียว
       const configMap: any = {
-        LEVEL: ['🌊 ระดับน้ำ (cm)', 'level', '#3b82f6'],
-        TEMP: ['🌡️ อุณหภูมิ (°C)', 'temp', '#f97316'],
-        HUMIDITY: ['💧 ความชื้น (%)', 'humid', '#06b6d4']
+        LEVEL: ['🌊 ระดับน้ำในถัง (cm)', 'level', '#3b82f6', 'y'],
+        TEMP: ['🌡️ อุณหภูมิ (°C)', 'temp', '#f97316', 'y1'],
+        HUMIDITY: ['💧 ความชื้น (%)', 'humid', '#06b6d4', 'y2']
       };
-      const [l, k, c] = configMap[viewMode];
-      datasets.push(createDataset(l, k, c, 'y'));
+      const [l, k, c, axis] = configMap[viewMode];
+      datasets.push(createDataset(l, k, c, axis));
     }
 
     return { labels, datasets };
@@ -101,48 +106,37 @@ export default function WaterLevelChart({
       legend: { 
         display: true, 
         position: 'top', 
-        labels: { 
-          color: isDark ? '#cbd5e1' : '#475569', 
-          usePointStyle: true, 
-          font: { size: 11, weight: 'bold' } 
-        } 
+        labels: { color: isDark ? '#cbd5e1' : '#475569', usePointStyle: true, font: { size: 11, weight: 'bold' } } 
       },
       tooltip: { mode: 'index', intersect: false }
     },
     scales: {
       x: { 
-        ticks: { 
-          color: isDark ? '#64748b' : '#94a3b8', 
-          font: { size: 10 }, 
-          maxRotation: 45, 
-          minRotation: 45, 
-          autoSkip: true, 
-          maxTicksLimit: timeframe === 'day' ? 12 : 7 
-        },
+        ticks: { color: isDark ? '#64748b' : '#94a3b8', font: { size: 10 }, maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: timeframe === 'day' ? 12 : 7 },
         grid: { display: false }
       },
       y: { 
+        display: viewMode === 'ALL_METRICS' || viewMode === 'LEVEL',
         type: 'linear', 
         position: 'left',
-        // ✅ ปรับ Range ให้เหมาะกับถัง 20 ซม. (ระยะเซนเซอร์ 52-70)
-        min: 50,
-        max: 75,
+        min: 0,
+        max: 25, // ✅ ล็อกเพดานน้ำไว้ที่ 25 ซม. (เพื่อให้น้ำ 20 ซม. ไม่ทะลุขอบ)
         ticks: { color: '#3b82f6', font: { size: 10 }, stepSize: 5 },
         grid: { color: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' } 
       },
       y1: { 
+        display: viewMode === 'ALL_METRICS' || viewMode === 'TEMP',
         type: 'linear', 
-        display: viewMode === 'ALL_METRICS', 
-        position: 'right', 
-        min: 20, max: 50, // Range อุณหภูมิปกติ
+        position: viewMode === 'ALL_METRICS' ? 'right' : 'left', // ✅ พอกดแยกดูอุณหภูมิ ให้ย้ายสเกลมาฝั่งซ้ายสวยๆ
+        min: 10, max: 50, // ✅ ล็อกอุณหภูมิ 10-50 องศา
         ticks: { color: '#f97316', font: { size: 10 } }, 
         grid: { drawOnChartArea: false } 
       },
       y2: { 
+        display: viewMode === 'ALL_METRICS' || viewMode === 'HUMIDITY',
         type: 'linear', 
-        display: viewMode === 'ALL_METRICS', 
-        position: 'right', 
-        min: 0, max: 100,
+        position: viewMode === 'ALL_METRICS' ? 'right' : 'left', // ✅ พอกดแยกดูความชื้น ให้ย้ายสเกลมาฝั่งซ้ายสวยๆ
+        min: 0, max: 100, // ✅ ล็อกความชื้น 0-100%
         ticks: { color: '#06b6d4', font: { size: 10 } }, 
         grid: { drawOnChartArea: false } 
       }
