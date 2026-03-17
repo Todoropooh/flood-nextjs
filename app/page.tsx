@@ -6,12 +6,36 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import WaterLevelChart from '@/components/WaterLevelChart';
 import StatusDonut from '@/components/StatusDonut';
+// 🌟 นำเข้า Recharts สำหรับกราฟจิ๋ว
+import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 import { 
   Waves, Settings, Sun, Moon, Activity, Thermometer, 
   Droplets, ChevronDown, AlertTriangle, CheckCircle 
 } from 'lucide-react';
 
 const DeviceMap = dynamic(() => import('@/components/DeviceMap'), { ssr: false });
+
+// 📊 1. Component กราฟจิ๋ว (Sparkline) สำหรับใส่ในการ์ดอุปกรณ์
+function MiniChart({ data, color = "#3b82f6" }: { data: any[], color?: string }) {
+  if (!data || data.length === 0) return <div className="h-10" />; // ถ้าไม่มีข้อมูลให้เว้นที่ว่างไว้
+  return (
+    <div className="h-10 w-full mt-1 opacity-50">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data}>
+          <YAxis hide domain={['auto', 'auto']} />
+          <Line 
+            type="monotone" 
+            dataKey="level" 
+            stroke={color} 
+            strokeWidth={1.5} 
+            dot={false} 
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
 
 export default function Home() {
   const [logs, setLogs] = useState<any[]>([]);
@@ -54,11 +78,10 @@ export default function Home() {
         const crit = device.criticalThreshold || 7;
         const warn = device.warningThreshold || 3;
         
-        // ถ้าน้ำถึงระดับวิกฤต และยังไม่ได้แจ้งเตือนสถานะนี้ไปก่อนหน้า
         if (wl >= crit && lastNotifiedRef.current[device.mac] !== 'CRITICAL') {
           new Notification(`🚨 ระดับน้ำวิกฤต: ${device.name}`, {
             body: `ขณะนี้ระดับน้ำสูงถึง ${wl.toFixed(1)} cm กรุณาตรวจสอบด่วน!`,
-            icon: '/logo.png' // ใส่ path รูปโลโก้ของคุณ
+            icon: '/logo.png' 
           });
           lastNotifiedRef.current[device.mac] = 'CRITICAL';
         } 
@@ -113,9 +136,11 @@ export default function Home() {
   const todayLogs = displayLogs.filter(log => log.createdAt && new Date(log.createdAt).toDateString() === today.toDateString());
   const todayMaxLevel = todayLogs.length > 0 ? Math.max(...todayLogs.map(l => Number(l.level) || 0)) : 0;
   const todayAvgTemp = todayLogs.length > 0 ? (todayLogs.reduce((sum, l) => sum + (Number(l.temperature) || 0), 0) / todayLogs.length) : 0;
+  
+  // ✨ แก้ไขการดึงค่าเฉลี่ยความชื้นให้ครอบคลุมชื่อตัวแปร
   const todayAvgHum = todayLogs.length > 0 ? (todayLogs.reduce((sum, l) => {
-        const h = l.air_humidity !== undefined ? l.air_humidity : l.humidity;
-        return sum + (Number(h) || 0);
+        const h = l.air_humidity !== undefined ? l.air_humidity : (l.humidity || 0);
+        return sum + Number(h);
       }, 0) / todayLogs.length) : 0;
 
   const getStatusDesign = (level: number, warning: number, critical: number) => {
@@ -181,7 +206,7 @@ export default function Home() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard label={selectedDeviceMac === 'ALL' ? 'Max Level' : 'Current Level'} val={currentLevel.toFixed(1)} unit="cm" subVal={`Peak: ${todayMaxLevel.toFixed(1)} cm`} icon={Waves} color="text-blue-500" showUI={showUI} delay="delay-[100ms]" />
           <MetricCard label="Temperature" val={currentTemp.toFixed(1)} unit="°C" subVal={`Avg: ${todayAvgTemp.toFixed(1)} °C`} icon={Thermometer} color="text-orange-500" showUI={showUI} delay="delay-[200ms]" />
-          <MetricCard label="Humidity" val={currentHum.toFixed(0)} unit="%" subVal={`Avg: ${todayAvgHum.toFixed(0)} %`} icon={Droplets} color="text-cyan-500" showUI={showUI} delay="delay-[300ms]" />
+          <MetricCard label="Humidity" val={currentHum.toFixed(1)} unit="%" subVal={`Avg: ${todayAvgHum.toFixed(1)} %`} icon={Droplets} color="text-cyan-500" showUI={showUI} delay="delay-[300ms]" />
           <StatusCard status={systemStatus} lastUpdate={lastUpdateTime} showUI={showUI} delay="delay-[400ms]" />
         </div>
 
@@ -192,22 +217,44 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               {devices.map((device) => {
                 const wl = device.waterLevel || 0;
+                // ✨ ดึงอุณหภูมิและความชื้นมาใช้ในการ์ดจิ๋ว
+                const temp = device.temperature || 0;
+                const hum = device.humidity || 0;
+                
                 const status = getStatusDesign(wl, device.warningThreshold, device.criticalThreshold);
                 const percent = Math.min((wl / (device.criticalThreshold || 10)) * 100, 100);
+
+                const deviceMiniLogs = logs
+                  .filter(l => l.mac === device.mac)
+                  .map(l => ({ level: l.level }))
+                  .reverse()
+                  .slice(-10);
+
                 return (
                   <div key={device.mac} onClick={() => setSelectedDeviceMac(device.mac)} className="cursor-pointer bg-white/50 dark:bg-[#111827]/60 border border-white/50 dark:border-white/10 p-5 rounded-3xl backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl relative flex flex-col group overflow-hidden shadow-sm">
                     <div className={`absolute inset-0 ${status.bg} transition-all duration-1000 ease-in-out -z-10 opacity-10`} />
-                    <div className="flex justify-between items-center mb-5 gap-2">
+                    <div className="flex justify-between items-center mb-2 gap-2">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-xl overflow-hidden bg-white/80 dark:bg-black/40 border border-white/50 dark:border-white/10 flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform duration-300">{device.image ? <img src={device.image} alt={device.name} className="w-full h-full object-cover" /> : <Waves size={20} className={status.color} />}</div>
+                        <div className="w-10 h-10 rounded-xl overflow-hidden bg-white/80 dark:bg-black/40 border border-white/50 dark:border-white/10 flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform duration-300">{device.image ? <img src={device.image} alt={device.name} className="w-full h-full object-cover" /> : <Waves size={20} className={status.color} />}</div>
                         <div>
-                          <h4 className="font-bold text-slate-800 dark:text-white uppercase text-sm group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{device.name}</h4>
-                          <div className={`text-[10px] font-bold mt-1 px-2.5 py-0.5 rounded-lg w-fit uppercase shadow-sm border border-white/50 dark:border-white/5 bg-white/60 dark:bg-black/30 ${status.color}`}>{wl.toFixed(1)} cm</div>
+                          <h4 className="font-bold text-slate-800 dark:text-white uppercase text-xs group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate w-24">{device.name}</h4>
+                          <div className={`text-[9px] font-bold mt-0.5 px-2 py-0.5 rounded-lg w-fit uppercase shadow-sm border border-white/50 dark:border-white/5 bg-white/60 dark:bg-black/30 ${status.color}`}>
+                            {wl.toFixed(1)} cm
+                          </div>
                         </div>
                       </div>
-                      <div className="p-2.5 rounded-xl bg-white/60 dark:bg-black/30 shadow-sm border border-white/50 dark:border-white/5 group-hover:rotate-12 transition-transform">{status.icon}</div>
+                      <div className="p-2 rounded-xl bg-white/60 dark:bg-black/30 shadow-sm border border-white/50 dark:border-white/5 group-hover:rotate-12 transition-transform">{status.icon}</div>
                     </div>
-                    <div className="h-1.5 w-full bg-white/40 dark:bg-black/50 rounded-full overflow-hidden mt-auto">
+                    
+                    {/* ✨ เพิ่มบรรทัดนี้: โชว์อุณหภูมิและความชื้นใต้ชื่ออุปกรณ์ */}
+                    <div className="flex gap-3 mt-1 pl-1 text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                      <span className="flex items-center gap-1"><Thermometer size={10} className="text-orange-500" /> {temp.toFixed(1)}°C</span>
+                      <span className="flex items-center gap-1"><Droplets size={10} className="text-cyan-500" /> {hum.toFixed(1)}%</span>
+                    </div>
+
+                    <MiniChart data={deviceMiniLogs} color={wl >= (device.criticalThreshold || 7) ? "#ef4444" : "#3b82f6"} />
+
+                    <div className="h-1 w-full bg-white/40 dark:bg-black/50 rounded-full overflow-hidden mt-3">
                       <div className={`h-full rounded-full transition-all duration-1000 ${wl >= (device.criticalThreshold || 7) ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : wl >= (device.warningThreshold || 3) ? 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.5)]' : 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]'}`} style={{ width: `${percent}%` }} />
                     </div>
                   </div>
@@ -251,7 +298,7 @@ export default function Home() {
   );
 }
 
-// Sub-components ... (MetricCard, StatusCard ยังเหมือนเดิมครับ)
+// MetricCard, StatusCard ...
 function MetricCard({ label, val, unit, subVal, icon: Icon, color, showUI, delay }: any) {
   return (
     <div className={`transform transition-all duration-1000 cubic-bezier(0.16, 1, 0.3, 1) ${delay} ${showUI ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-10 opacity-0 scale-95'}`}>
