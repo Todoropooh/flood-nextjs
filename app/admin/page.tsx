@@ -7,7 +7,7 @@ import { useTheme } from 'next-themes';
 import { 
   ArrowLeft, Trash2, XCircle, Search, Cpu, 
   Plus, Edit2, Users, ShieldCheck, Image as ImageIcon, 
-  Loader2, FileText, Calendar, Sun, Moon 
+  Loader2, FileText, Calendar, Sun, Moon, Settings 
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -25,6 +25,7 @@ export default function AdminPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false); 
   const [isExportModalOpen, setIsExportModalOpen] = useState(false); 
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false); // 🌟 State สำหรับสวิตช์
   const [modalAnim, setModalAnim] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -33,7 +34,9 @@ export default function AdminPage() {
   const [exportDays, setExportDays] = useState<number>(30); 
   const [showUI, setShowUI] = useState(false);
 
-  // 🌟 จุดที่แก้ไข: เพิ่มค่าเริ่มต้นสำหรับ Remote Control เพื่อป้องกันค่าเด้ง
+  // 🌟 State สำหรับเก็บค่าสวิตช์
+  const [systemSettings, setSystemSettings] = useState({ systemOn: true, buzzerOn: true });
+
   const defaultDevice = { 
     name: '', mac: '', location: '', type: 'ESP32', image: '', 
     warningThreshold: 3.0, criticalThreshold: 7.0, lat: 14.8824, lng: 103.4936,
@@ -48,8 +51,17 @@ export default function AdminPage() {
   useEffect(() => { 
     setIsMounted(true); 
     fetchData();
+    fetchSettings(); // 🌟 โหลดค่าสวิตช์ตอนเปิดหน้า
     setTimeout(() => setShowUI(true), 100);
   }, []);
+
+  // 🌟 ดึงค่าตั้งค่าจาก API
+  const fetchSettings = async () => {
+    try {
+      const res = await fetch('/api/settings');
+      if (res.ok) setSystemSettings(await res.json());
+    } catch (e) { console.error(e); }
+  };
 
   const fetchData = async () => {
     try {
@@ -109,7 +121,7 @@ export default function AdminPage() {
   const closeModal = () => {
     setModalAnim(false);
     setTimeout(() => { 
-      setIsAddModalOpen(false); setIsUserModalOpen(false); setIsExportModalOpen(false);
+      setIsAddModalOpen(false); setIsUserModalOpen(false); setIsExportModalOpen(false); setIsSettingsModalOpen(false);
       setEditingId(null); setIsSaving(false); 
     }, 300); 
   };
@@ -126,7 +138,7 @@ export default function AdminPage() {
     });
     
     if (res.ok) { 
-      await fetchData(); // 🌟 ดึงค่าใหม่ที่เซฟเป็น false มาลงเครื่องทันที
+      await fetchData(); 
       closeModal(); 
     } else { 
       alert("Error occurred while saving device"); 
@@ -145,6 +157,19 @@ export default function AdminPage() {
     if(!confirm('คุณแน่ใจหรือไม่ที่จะลบผู้ใช้นี้?')) return;
     const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' });
     if (res.ok) fetchData();
+  };
+
+  // 🌟 ฟังก์ชันจัดการสวิตช์
+  const handleToggleSettings = async (type: 'system' | 'buzzer') => {
+    const newValue = type === 'system' ? !systemSettings.systemOn : !systemSettings.buzzerOn;
+    
+    setSystemSettings(prev => ({ ...prev, [type === 'system' ? 'systemOn' : 'buzzerOn']: newValue }));
+
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(type === 'system' ? { systemOn: newValue } : { buzzerOn: newValue })
+    });
   };
 
   if (!isMounted) return null;
@@ -201,6 +226,10 @@ export default function AdminPage() {
                   <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white/50 dark:bg-black/30 border border-white/50 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500/50" />
                 </div>
                 <button onClick={() => { setIsExportModalOpen(true); setTimeout(()=>setModalAnim(true),10); }} className="p-2 bg-white/50 dark:bg-white/10 text-emerald-600 border border-white/50 rounded-xl shadow-sm"><FileText size={16} /></button>
+                
+                {/* 🌟 ปุ่มตั้งค่า Settings (รูปฟันเฟือง) */}
+                <button onClick={() => { setIsSettingsModalOpen(true); setTimeout(()=>setModalAnim(true),10); }} className="p-2 bg-white/50 dark:bg-white/10 text-slate-600 dark:text-slate-300 border border-white/50 rounded-xl shadow-sm hover:text-blue-500"><Settings size={16} /></button>
+                
                 <button onClick={() => { if(activeTab==='nodes') {setEditingId(null); setIsAddModalOpen(true);} else {setEditingId(null); setUserFormData(defaultUser); setIsUserModalOpen(true);} setTimeout(()=>setModalAnim(true),10); }} className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-500 transition-all shadow-md min-w-[36px] flex items-center justify-center"><Plus size={18}/></button>
               </div>
             </div>
@@ -270,7 +299,6 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* 🌟 1. NODE MODAL (ใช้ key เพื่อแก้ปัญหาค่าเด้ง) */}
       <NodeModal 
         key={editingId || 'new'} 
         isOpen={isAddModalOpen}
@@ -282,7 +310,7 @@ export default function AdminPage() {
         isSaving={isSaving}
       />
 
-      {/* 🌟 2. USER MODAL (ใส่กลับมาให้แล้วครับ) */}
+      {/* 🌟 USER MODAL ที่ถูกต้อง */}
       {isUserModalOpen && (
         <div className={`fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300 ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
           <div className={`bg-white/80 dark:bg-[#1e2330]/80 backdrop-blur-2xl rounded-3xl shadow-2xl w-full max-w-md border border-white/50 transform transition-all duration-300 ${modalAnim ? 'scale-100' : 'scale-95'} overflow-hidden`}>
@@ -309,7 +337,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* 🌟 3. EXPORT MODAL (ใส่กลับมาให้แล้วครับ) */}
+      {/* 🌟 EXPORT MODAL */}
       {isExportModalOpen && (
         <div className={`fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300 ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
           <div className="bg-white/80 dark:bg-[#1e2330]/80 backdrop-blur-2xl rounded-3xl shadow-2xl w-full max-w-sm border p-8 space-y-6 text-center transform transition-all">
@@ -324,6 +352,53 @@ export default function AdminPage() {
                 {isExporting ? <Loader2 className="animate-spin mx-auto" /> : 'Download PDF Report'}
              </button>
              <button onClick={closeModal} className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* 🌟 SETTINGS MODAL (Device Management) - หน้าต่างที่พี่แคปรูปมา */}
+      {isSettingsModalOpen && (
+        <div className={`fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300 ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
+          <div className={`bg-white dark:bg-[#1e2330] rounded-3xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800 transform transition-all duration-300 ${modalAnim ? 'scale-100' : 'scale-95'} overflow-hidden p-6`}>
+            
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg">Device Management</h3>
+              <button onClick={closeModal} className="text-slate-400 hover:text-red-500"><XCircle size={20}/></button>
+            </div>
+            
+            <div className="space-y-6">
+              {/* Switch 1 */}
+              <div className="flex justify-between items-center">
+                <div>
+                  <h4 className="font-bold text-sm">ระบบการทำงาน</h4>
+                  <p className="text-xs text-slate-500 mt-1">เปิด-ปิด การรับส่งข้อมูลของอุปกรณ์</p>
+                </div>
+                <button 
+                  onClick={() => handleToggleSettings('system')}
+                  className={`w-12 h-6 rounded-full transition-colors relative ${systemSettings.systemOn ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'}`}
+                >
+                  <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${systemSettings.systemOn ? 'translate-x-7' : 'translate-x-1'}`} />
+                </button>
+              </div>
+
+              {/* Switch 2 */}
+              <div className="flex justify-between items-center">
+                <div>
+                  <h4 className="font-bold text-sm">เสียงแจ้งเตือน (Buzzer)</h4>
+                  <p className="text-xs text-slate-500 mt-1">เปิด-ปิด เสียงร้องเตือนที่ตัวอุปกรณ์</p>
+                </div>
+                <button 
+                  onClick={() => handleToggleSettings('buzzer')}
+                  className={`w-12 h-6 rounded-full transition-colors relative ${systemSettings.buzzerOn ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'}`}
+                >
+                  <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${systemSettings.buzzerOn ? 'translate-x-7' : 'translate-x-1'}`} />
+                </button>
+              </div>
+            </div>
+
+            <button onClick={closeModal} className="w-full mt-8 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+              ปิดหน้าต่าง
+            </button>
           </div>
         </div>
       )}
