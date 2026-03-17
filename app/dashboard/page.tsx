@@ -1,32 +1,58 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { Waves, Thermometer, Droplets, Activity, RefreshCw } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'; // npm install recharts
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 export default function UserDashboard() {
   const [history, setHistory] = useState<any[]>([]);
   const [latest, setLatest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchData = async () => {
     try {
-      const res = await fetch('/api/dashboard/history');
+      // เพิ่ม t ป้องกัน cache
+      const res = await fetch(`/api/dashboard/history?t=${Date.now()}`);
       if (res.ok) {
         const data = await res.json();
-        setHistory(data);
-        setLatest(data[data.length - 1]);
+        
+        // เช็คว่าส่งมาเป็น Array ไหม ป้องกัน .length พัง
+        if (Array.isArray(data)) {
+           setHistory(data);
+           if (data.length > 0) {
+             setLatest(data[data.length - 1]);
+           }
+        } else {
+           console.error("API did not return an array:", data);
+        }
+      } else {
+        setError(`Failed to fetch data: ${res.status}`);
       }
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); }
+    } catch (err: any) { 
+      console.error(err); 
+      setError(err.message || 'Unknown error');
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 10000); // อัปเดตทุก 10 วินาที
+    const interval = setInterval(fetchData, 10000); 
     return () => clearInterval(interval);
   }, []);
 
   if (loading) return <div className="h-screen flex items-center justify-center bg-[#0f172a] text-white">Connecting to Flood Sensors...</div>;
+
+  if (error) return (
+     <div className="h-screen flex items-center justify-center bg-[#0f172a] text-red-400 p-4">
+        <div className="bg-red-900/20 border border-red-500/30 p-6 rounded-2xl text-center">
+            <h2 className="font-bold text-xl mb-2">Connection Error</h2>
+            <p>{error}</p>
+            <button onClick={fetchData} className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Try Again</button>
+        </div>
+     </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-100 p-4 md:p-8 font-sans">
@@ -34,7 +60,9 @@ export default function UserDashboard() {
       <header className="max-w-7xl mx-auto flex justify-between items-center mb-10">
         <div>
           <h1 className="text-3xl font-black uppercase tracking-tighter italic text-blue-500">Monitoring <span className="text-white">Live</span></h1>
-          <p className="text-slate-400 text-xs mt-1 uppercase tracking-widest">Last Update: {latest ? new Date(latest.createdAt).toLocaleString('th-TH') : 'N/A'}</p>
+          <p className="text-slate-400 text-xs mt-1 uppercase tracking-widest">
+            Last Update: {latest?.createdAt ? new Date(latest.createdAt).toLocaleString('th-TH') : 'N/A'}
+          </p>
         </div>
         <button onClick={fetchData} className="p-3 bg-white/5 rounded-2xl hover:bg-white/10 transition-all border border-white/10">
           <RefreshCw size={20} className="text-blue-400" />
@@ -51,7 +79,7 @@ export default function UserDashboard() {
               <Waves className="text-blue-400" size={24} />
               <span className="text-[10px] font-bold text-blue-300 uppercase tracking-widest">Water Level</span>
             </div>
-            <div className="text-5xl font-black">{latest?.level || 0}<span className="text-sm font-normal text-blue-300 ml-2">cm</span></div>
+            <div className="text-5xl font-black">{Number(latest?.level || 0).toFixed(1)}<span className="text-sm font-normal text-blue-300 ml-2">cm</span></div>
           </div>
 
           {/* Temp Card */}
@@ -60,7 +88,7 @@ export default function UserDashboard() {
               <Thermometer className="text-orange-400" size={24} />
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Temperature</span>
             </div>
-            <div className="text-4xl font-black">{latest?.temperature || 0}<span className="text-sm font-normal text-slate-500 ml-2">°C</span></div>
+            <div className="text-4xl font-black">{Number(latest?.temperature || 0).toFixed(1)}<span className="text-sm font-normal text-slate-500 ml-2">°C</span></div>
           </div>
 
           {/* Humidity Card */}
@@ -69,7 +97,7 @@ export default function UserDashboard() {
               <Droplets className="text-emerald-400" size={24} />
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Humidity</span>
             </div>
-            <div className="text-4xl font-black">{latest?.air_humidity || 0}<span className="text-sm font-normal text-slate-500 ml-2">%</span></div>
+            <div className="text-4xl font-black">{Number(latest?.air_humidity || latest?.humidity || 0).toFixed(1)}<span className="text-sm font-normal text-slate-500 ml-2">%</span></div>
           </div>
         </div>
 
@@ -89,11 +117,13 @@ export default function UserDashboard() {
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '15px', fontSize: '12px' }}
                   itemStyle={{ fontWeight: 'bold' }}
+                  labelFormatter={(label) => label ? new Date(label).toLocaleString('th-TH') : ''}
                 />
                 <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase' }} />
                 <Line type="monotone" dataKey="level" name="Level" stroke="#3b82f6" strokeWidth={4} dot={false} />
                 <Line type="monotone" dataKey="temperature" name="Temp" stroke="#f97316" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="air_humidity" name="Humid" stroke="#10b981" strokeWidth={2} dot={false} />
+                {/* ใช้วิธีเช็คค่า air_humidity ถ้าไม่มี ให้ใช้ humidity แทน เพื่อป้องกันกราฟพัง */}
+                <Line type="monotone" dataKey={(d) => d.air_humidity !== undefined ? d.air_humidity : d.humidity} name="Humid" stroke="#10b981" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
