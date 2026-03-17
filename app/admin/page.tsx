@@ -11,9 +11,11 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import html2canvas from 'html2canvas'; // 🌟 Import เครื่องมือถ่ายรูปหน้าจอ
 
-// 🌟 Import Component Modal ที่เราแยกไว้
+// 🌟 Import Component
 import NodeModal from '@/components/NodeModal'; 
+import WaterLevelChart from '@/components/WaterLevelChart'; // 🌟 Import กราฟ
 
 export default function AdminPage() {
   const { data: session } = useSession();
@@ -34,8 +36,8 @@ export default function AdminPage() {
   const [exportDays, setExportDays] = useState<number>(30); 
   const [showUI, setShowUI] = useState(false);
 
-  // State สำหรับเก็บค่าสวิตช์
   const [systemSettings, setSystemSettings] = useState({ systemOn: true, buzzerOn: true });
+  const [exportLogs, setExportLogs] = useState<any[]>([]); // 🌟 State สำหรับเก็บข้อมูลลงกราฟใน PDF
 
   const defaultDevice = { 
     name: '', mac: '', location: '', type: 'ESP32', image: '', 
@@ -54,6 +56,20 @@ export default function AdminPage() {
     fetchSettings();
     setTimeout(() => setShowUI(true), 100);
   }, []);
+
+  // 🌟 ดึงข้อมูล Logs ย้อนหลังทันทีที่เปิดหน้าต่าง Export
+  useEffect(() => {
+    if (isExportModalOpen) {
+      fetch(`/api/flood?timeframe=month`)
+        .then(res => res.json())
+        .then(data => {
+          const cutoffTime = Date.now() - (exportDays * 24 * 60 * 60 * 1000);
+          const filtered = data.filter((l: any) => new Date(l.createdAt || l.timestamp).getTime() > cutoffTime);
+          setExportLogs(filtered);
+        })
+        .catch(err => console.error("Error fetching logs for PDF", err));
+    }
+  }, [isExportModalOpen, exportDays]);
 
   const fetchSettings = async () => {
     try {
@@ -74,7 +90,6 @@ export default function AdminPage() {
     } catch (e) { console.error(e); }
   };
 
-  // 🌟 ระบบ Export PDF ที่อัปเกรดแล้ว (ดึงข้อมูลย้อนหลังแบบละเอียดยิบ)
   const executeExportPDF = async () => {
     setIsExporting(true);
     try {
@@ -96,16 +111,20 @@ export default function AdminPage() {
         });
         doc.save(`User_Report_${new Date().getTime()}.pdf`);
       } else {
-        // 1. ดึงข้อมูล Logs จาก API
-        const res = await fetch(`/api/flood?timeframe=month`);
-        let logs = [];
-        if (res.ok) logs = await res.json();
+        // 🌟 1. แอบถ่ายรูปกราฟที่ซ่อนไว้
+        const chartElem = document.getElementById('pdf-chart-container');
+        let chartImgData = null;
+        let canvasWidth = 0;
+        let canvasHeight = 0;
 
-        // 2. กรองข้อมูลเฉพาะช่วงเวลาที่เลือก
-        const cutoffTime = Date.now() - (exportDays * 24 * 60 * 60 * 1000);
-        const filteredLogs = logs.filter((l: any) => new Date(l.createdAt || l.timestamp).getTime() > cutoffTime);
+        if (chartElem) {
+          const canvas = await html2canvas(chartElem, { scale: 2, backgroundColor: '#ffffff' });
+          chartImgData = canvas.toDataURL('image/png');
+          canvasWidth = canvas.width;
+          canvasHeight = canvas.height;
+        }
 
-        // 3. ตกแต่งหัวกระดาษ PDF
+        // 🌟 2. วาดหัวกระดาษ PDF
         doc.setFillColor(41, 128, 185); 
         doc.rect(0, 0, 210, 35, 'F');
         doc.setTextColor(255, 255, 255);
@@ -115,13 +134,22 @@ export default function AdminPage() {
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         doc.text(`Generated: ${now} | Period: Last ${exportDays} Days`, 14, 26);
-        doc.text(`Total Records: ${filteredLogs.length} logs`, 14, 31);
+        doc.text(`Total Records: ${exportLogs.length} logs`, 14, 31);
 
-        // 4. เตรียมข้อมูลลงตาราง
-        const tableData = filteredLogs.map((l: any) => {
+        let currentY = 45;
+
+        // 🌟 3. แปะรูปกราฟลงใน PDF (ถ้าถ่ายรูปสำเร็จ)
+        if (chartImgData) {
+          const imgWidth = 182; // ความกว้างเต็มหน้ากระดาษ (เว้นขอบ 14mm ซ้ายขวา)
+          const imgHeight = (canvasHeight * imgWidth) / canvasWidth; // คำนวณความสูงให้สมส่วน
+          doc.addImage(chartImgData, 'PNG', 14, currentY, imgWidth, imgHeight);
+          currentY += imgHeight + 10; // ดันจุดเริ่มต้นตารางลงมาใต้กราฟ
+        }
+
+        // 🌟 4. เตรียมข้อมูลลงตาราง
+        const tableData = exportLogs.map((l: any) => {
           const dName = devices.find(d => d.mac === l.mac || d.device_id === l.device_id)?.name || l.mac || 'Unknown';
           
-          // คำนวณระดับน้ำ 95 cm - ระยะห่าง (Zero-Point Fix)
           const sensorDist = Number(l.level) || 95;
           let waterLevel = 95 - sensorDist;
           if (sensorDist <= 0.5 || sensorDist > 80) waterLevel = 0;
@@ -140,9 +168,9 @@ export default function AdminPage() {
           ];
         });
 
-        // 5. สร้างตารางแบบ Auto-Paging
+        // 🌟 5. สร้างตารางแบบ Auto-Paging
         autoTable(doc, {
-          startY: 45,
+          startY: currentY,
           head: [['Date/Time', 'Node Name', 'Water (cm)', 'Temp (C)', 'Humid (%)', 'SIM Signal']],
           body: tableData,
           theme: 'striped',
@@ -387,7 +415,6 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* 🌟 EXPORT MODAL */}
       {isExportModalOpen && (
         <div className={`fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300 ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
           <div className="bg-white/80 dark:bg-[#1e2330]/80 backdrop-blur-2xl rounded-3xl shadow-2xl w-full max-w-sm border p-8 space-y-6 text-center transform transition-all">
@@ -406,7 +433,6 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* 🌟 SETTINGS MODAL (Device Management) */}
       {isSettingsModalOpen && (
         <div className={`fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300 ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
           <div className={`bg-white dark:bg-[#1e2330] rounded-3xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800 transform transition-all duration-300 ${modalAnim ? 'scale-100' : 'scale-95'} overflow-hidden p-6`}>
@@ -417,7 +443,6 @@ export default function AdminPage() {
             </div>
             
             <div className="space-y-6">
-              {/* Switch 1 */}
               <div className="flex justify-between items-center">
                 <div>
                   <h4 className="font-bold text-sm">ระบบการทำงาน</h4>
@@ -431,7 +456,6 @@ export default function AdminPage() {
                 </button>
               </div>
 
-              {/* Switch 2 */}
               <div className="flex justify-between items-center">
                 <div>
                   <h4 className="font-bold text-sm">เสียงแจ้งเตือน (Buzzer)</h4>
@@ -452,6 +476,24 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+
+      {/* 🌟 ฐานลับนินจา: ซ่อนกราฟไว้เพื่อให้ html2canvas มาถ่ายรูป */}
+      <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '800px', height: '400px', zIndex: -50 }}>
+        <div id="pdf-chart-container" style={{ width: '100%', height: '100%', backgroundColor: 'white', padding: '20px', borderRadius: '10px' }}>
+           <h2 style={{ textAlign: 'center', color: '#1e293b', marginBottom: '15px', fontFamily: 'sans-serif', fontSize: '18px', fontWeight: 'bold' }}>
+             Water Level Trend (Last {exportDays} Days)
+           </h2>
+           <div style={{ width: '100%', height: '320px' }}>
+             <WaterLevelChart 
+               data={exportLogs} 
+               timeframe={exportDays === 1 ? 'day' : exportDays === 7 ? 'week' : 'month'} 
+               isDark={false} 
+               devices={devices} 
+               selectedDeviceMac="ALL" 
+             />
+           </div>
+        </div>
+      </div>
 
     </main>
   );
