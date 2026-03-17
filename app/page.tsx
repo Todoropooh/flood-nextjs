@@ -5,7 +5,7 @@ import { useTheme } from 'next-themes';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 
-// Import Components ครบชุด
+// --- Import Components ---
 import WaterLevelChart from '@/components/WaterLevelChart';
 import StatusDonut from '@/components/StatusDonut';
 import WaterTank from '@/components/WaterTank'; 
@@ -16,7 +16,7 @@ import {
   Droplets, ChevronDown, Bell, AlertTriangle 
 } from 'lucide-react';
 
-// ✅ แผนที่ No SSR
+// --- แผนที่แบบ No SSR ---
 const DeviceMap = dynamic(() => import('@/components/DeviceMap'), { 
   ssr: false,
   loading: () => (
@@ -33,12 +33,16 @@ export default function Home() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [timeframe, setTimeframe] = useState('day');
+  
+  // ✅ ระบบแจ้งเตือน
   const [showPushNoti, setShowPushNoti] = useState(false);
   const [lastAlertState, setLastAlertState] = useState<'NONE' | 'SHOWN'>('NONE');
 
   const { setTheme, resolvedTheme } = useTheme();
 
-  useEffect(() => { setIsMounted(true); }, []);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -47,13 +51,16 @@ export default function Home() {
         fetch(`/api/flood?timeframe=${timeframe}&t=${t}`),
         fetch(`/api/devices?t=${t}`)
       ]);
+
       if (logRes.ok && devRes.ok) {
         const logData = await logRes.json();
         const devData = await devRes.json();
         setLogs(Array.isArray(logData) ? logData : []);
         setDevices(Array.isArray(devData) ? devData : []);
       }
-    } catch (err) { console.error("Fetch error:", err); }
+    } catch (err) {
+      console.error("Fetch error:", err);
+    }
   }, [timeframe]);
 
   useEffect(() => {
@@ -64,35 +71,42 @@ export default function Home() {
 
   if (!isMounted) return <div className="min-h-screen bg-slate-50 dark:bg-slate-950" />;
 
-  // ระบบ Filter อุปกรณ์
+  // --- ระบบ Filter ข้อมูล ---
   const normalize = (v: any) => String(v || '').trim().toLowerCase();
-  const displayDevices = selectedDeviceMac === 'ALL' ? devices : devices.filter(d => normalize(d.mac) === normalize(selectedDeviceMac));
-  const displayLogs = selectedDeviceMac === 'ALL' ? logs : logs.filter(l => normalize(l.mac || l.device_id) === normalize(selectedDeviceMac));
   
+  const displayDevices = selectedDeviceMac === 'ALL'
+      ? devices
+      : devices.filter(d => normalize(d.mac) === normalize(selectedDeviceMac));
+
+  const displayLogs = selectedDeviceMac === 'ALL'
+      ? logs
+      : logs.filter(l => normalize(l.mac || l.device_id) === normalize(selectedDeviceMac));
+
   const latestLog = displayLogs.length > 0 ? displayLogs[displayLogs.length - 1] : null;
   const currentDevice = displayDevices.length > 0 ? displayDevices[0] : null;
 
-  // ✅ [LOGIC 70-20 พร้อมระบบ Zero-Point Fix]
+  // ✅ [LOGIC 70-20]
   const sensorHeight = 70;
   const tankMaxHeight = 20;
   const sensorDist = Number(latestLog?.level ?? currentDevice?.waterLevel ?? 70);
   
-  // สูตรคำนวณพื้นฐาน
+  // สูตรคำนวณระดับน้ำ
   let waterInTank = sensorHeight - sensorDist;
 
-  // 🛡️ ปรับแก้ตามที่คุยกัน: ถ้าวัดได้ 0 (เอ๋อ) หรือ เกิน 63 cm (ใกล้พื้น) ให้เป็น "ปลอดภัย" (น้ำ 0)
+  // 🛡️ Zero-Point Fix: ถ้าใกล้พื้น (>63) หรือ เซนเซอร์เอ๋อ (<=0.5) ให้เป็น 0 (ปลอดภัย)
   if (sensorDist <= 0.5 || sensorDist > 63) {
     waterInTank = 0;
   }
 
-  // ล็อกค่าให้อยู่ในสเกลถัง 20 cm
+  // ล็อกค่าให้อยู่ในช่วง 0-20 cm
   if (waterInTank > tankMaxHeight) waterInTank = tankMaxHeight;
   if (waterInTank < 0) waterInTank = 0;
 
+  // ข้อมูลอุณหภูมิ/ความชื้น
   const currentTemp = Number(latestLog?.temperature ?? currentDevice?.temperature ?? 0);
   const currentHumid = Number(latestLog?.humidity || latestLog?.air_humidity ?? currentDevice?.humidity ?? 0);
 
-  // ✅ ระบบแจ้งเตือน Pop-up (เด้งเมื่อน้ำ > 7 cm)
+  // การจัดการแจ้งเตือน Pop-up (เด้งเมื่อพ้น 7 cm)
   if (waterInTank > 7 && lastAlertState === 'NONE') {
     setShowPushNoti(true);
     setLastAlertState('SHOWN');
@@ -113,8 +127,8 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 relative transition-colors">
       
-      {/* Pop-up Notification */}
-      {showPushNoti && (
+      {/* แจ้งเตือน Pop-up */}
+      {showPushNoti && waterInTank > 7 && (
         <div className="fixed bottom-8 right-8 z-[200] animate-bounce">
           <div className={`p-4 rounded-2xl flex items-center gap-4 text-white shadow-2xl border-2 border-white/20 ${status.bg}`}>
             <AlertTriangle size={32} className="animate-pulse" />
@@ -159,7 +173,7 @@ export default function Home() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard label="ระดับน้ำ (cm)" val={waterInTank.toFixed(1)} unit="cm" icon={<Waves/>} color={status.color} />
+          <MetricCard label="ระดับน้ำ" val={waterInTank.toFixed(1)} unit="cm" icon={<Waves/>} color={status.color} />
           <MetricCard label="อุณหภูมิ" val={currentTemp.toFixed(1)} unit="°C" icon={<Thermometer/>} color="text-orange-500" />
           <MetricCard label="ความชื้น" val={currentHumid.toFixed(0)} unit="%" icon={<Droplets/>} color="text-emerald-500" />
           <MetricCard label="สถานะ" val={status.label} unit="" icon={<Activity/>} color={status.color} />
@@ -169,13 +183,21 @@ export default function Home() {
           <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm min-h-[450px] flex flex-col">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Activity size={18} className="text-blue-600"/> Trend Analytics</h3>
-              <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl shadow-inner">
+              <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl shadow-inner text-xs font-bold">
                 {['day', 'week', 'month'].map(tf => (
-                  <button key={tf} onClick={() => setTimeframe(tf)} className={`px-4 py-1 text-[10px] font-bold uppercase rounded-lg transition-all ${timeframe === tf ? 'bg-white dark:bg-slate-700 text-blue-600' : 'text-slate-500'}`}>{tf}</button>
+                  <button key={tf} onClick={() => setTimeframe(tf)} className={`px-4 py-1 uppercase rounded-lg transition-all ${timeframe === tf ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm' : 'text-slate-500'}`}>{tf}</button>
                 ))}
               </div>
             </div>
-            <div className="flex-grow"><WaterLevelChart data={displayLogs} timeframe={timeframe} isDark={resolvedTheme === 'dark'} /></div>
+            <div className="flex-grow">
+              <WaterLevelChart 
+                data={displayLogs} 
+                timeframe={timeframe} 
+                isDark={resolvedTheme === 'dark'} 
+                devices={devices} 
+                selectedDeviceMac={selectedDeviceMac} 
+              />
+            </div>
           </div>
           <WaterTank level={waterInTank} />
         </div>
@@ -184,9 +206,11 @@ export default function Home() {
           <div className="lg:col-span-8 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
             <RecentLogs logs={displayLogs} />
           </div>
-          <div className="lg:col-span-4 bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center justify-center">
+          <div className="lg:col-span-4 bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center justify-center min-h-[350px]">
             <h3 className="text-xs font-black uppercase tracking-widest mb-4 self-start">Distribution</h3>
-            <div className="w-full h-[300px]"><StatusDonut logs={displayLogs} isDark={resolvedTheme === 'dark'} /></div>
+            <div className="w-full h-full flex items-center justify-center">
+              <StatusDonut logs={displayLogs} isDark={resolvedTheme === 'dark'} />
+            </div>
           </div>
         </div>
 
