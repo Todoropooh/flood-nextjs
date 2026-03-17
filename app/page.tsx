@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useTheme } from 'next-themes';
 import Link from 'next/link';
 import dynamicImport from 'next/dynamic';
@@ -13,7 +13,7 @@ import {
   Droplets, ChevronDown
 } from 'lucide-react';
 
-// ✅ dynamic import (no SSR) เพื่อกันแผนที่ทำจอขาว
+// ✅ dynamic import (no SSR) ป้องกันแผนที่ทำจอขาว
 const DeviceMap = dynamicImport(() => import('@/components/DeviceMap'), { 
   ssr: false,
   loading: () => (
@@ -32,6 +32,7 @@ export default function Home() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [timeframe, setTimeframe] = useState('day');
+  const [isLoading, setIsLoading] = useState(false);
 
   const { setTheme, resolvedTheme } = useTheme();
 
@@ -39,7 +40,9 @@ export default function Home() {
     setIsMounted(true);
   }, []);
 
-  const fetchData = async () => {
+  // ✅ ดึงข้อมูลโดยส่งค่า timeframe ไปหา API เสมอ
+  const fetchData = useCallback(async (showLoading = false) => {
+    if (showLoading) setIsLoading(true);
     try {
       const t = Date.now();
       const [logRes, devRes] = await Promise.all([
@@ -55,14 +58,17 @@ export default function Home() {
       }
     } catch (err) {
       console.error("Fetch error:", err);
+    } finally {
+      setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
   }, [timeframe]);
+
+  // ✅ เมื่อ timeframe เปลี่ยน ให้รีโหลดข้อมูลทันที
+  useEffect(() => {
+    fetchData(true);
+    const interval = setInterval(() => fetchData(false), 5000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
 
   if (!isMounted) return <div className="min-h-screen bg-slate-50 dark:bg-slate-950" />;
 
@@ -79,7 +85,6 @@ export default function Home() {
   const latestLog = displayLogs.length > 0 ? displayLogs[displayLogs.length - 1] : null;
   const currentDevice = displayDevices.length > 0 ? displayDevices[0] : null;
 
-  // ✅ สกัดค่าตัวเลขแบบปลอดภัย 100%
   const currentLevel = Number(latestLog?.level ?? currentDevice?.waterLevel ?? 0);
   const currentTemp = Number(latestLog?.temperature ?? currentDevice?.temperature ?? 0);
   const currentHumid = Number(latestLog?.air_humidity ?? latestLog?.humidity ?? currentDevice?.humidity ?? 0);
@@ -97,14 +102,14 @@ export default function Home() {
           <div className="relative">
             <button 
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="flex items-center gap-2 bg-white dark:bg-slate-900 px-4 py-2 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 font-bold text-sm uppercase"
+              className="flex items-center gap-2 bg-white dark:bg-slate-900 px-4 py-2 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 font-bold text-sm uppercase transition-all active:scale-95"
             >
               {selectedDeviceMac === 'ALL' ? '🌍 Overview' : `📍 ${currentDevice?.name || 'Device'}`}
               <ChevronDown size={16} />
             </button>
 
             {isDropdownOpen && (
-              <div className="absolute top-full left-0 mt-2 w-56 bg-white dark:bg-slate-900 shadow-2xl rounded-2xl border border-slate-100 dark:border-slate-800 z-50 p-2">
+              <div className="absolute top-full left-0 mt-2 w-56 bg-white dark:bg-slate-900 shadow-2xl rounded-2xl border border-slate-100 dark:border-slate-800 z-50 p-2 animate-in fade-in zoom-in duration-200">
                 <button
                   onClick={() => { setSelectedDeviceMac('ALL'); setIsDropdownOpen(false); }}
                   className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-xs font-bold uppercase transition-colors"
@@ -128,14 +133,14 @@ export default function Home() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-            className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:scale-105"
+            className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:scale-110 active:scale-90"
           >
             {resolvedTheme === 'dark' ? <Sun size={20} className="text-yellow-500"/> : <Moon size={20} className="text-blue-600"/>}
           </button>
 
           <Link
             href="/admin"
-            className="px-4 py-2 bg-slate-900 dark:bg-blue-600 text-white rounded-xl text-xs font-bold uppercase shadow-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
+            className="px-4 py-2 bg-slate-900 dark:bg-blue-600 text-white rounded-xl text-xs font-bold uppercase shadow-lg flex items-center gap-2 hover:opacity-90 transition-all hover:translate-y-[-2px]"
           >
             <Settings size={16}/> Admin
           </Link>
@@ -159,18 +164,19 @@ export default function Home() {
 
         {/* ANALYTICS */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-8 bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm h-[450px] flex flex-col">
+          <div className="lg:col-span-8 bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm min-h-[500px] flex flex-col">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
-                <Activity size={18} className="text-blue-600"/> Trend Analytics
+                <Activity size={18} className="text-blue-600"/> 
+                Trend Analytics {isLoading && <span className="text-[10px] animate-pulse text-slate-400 font-normal ml-2 italic">Loading Data...</span>}
               </h3>
               <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
                 {['day', 'week', 'month'].map(tf => (
                   <button
                     key={tf}
                     onClick={() => setTimeframe(tf)}
-                    className={`px-3 py-1 text-[10px] font-bold uppercase rounded-lg transition-all ${
-                      timeframe === tf ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-500'
+                    className={`px-4 py-1.5 text-[10px] font-bold uppercase rounded-lg transition-all ${
+                      timeframe === tf ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                     }`}
                   >
                     {tf}
@@ -211,7 +217,7 @@ export default function Home() {
 
 function MetricCard({ label, val, unit, icon, color }: any) {
   return (
-    <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col justify-between h-40 transition-all hover:shadow-md">
+    <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col justify-between h-40 transition-all hover:shadow-md hover:translate-y-[-4px]">
       <div className="flex justify-between items-start">
         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{label}</span>
         <div className={`p-2 rounded-xl bg-slate-50 dark:bg-slate-800 ${color}`}>{icon}</div>

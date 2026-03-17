@@ -31,7 +31,7 @@ export default function WaterLevelChart({
   const chartData = useMemo(() => {
     if (!mounted || !Array.isArray(data) || data.length === 0) return { labels: [], datasets: [] };
 
-    // 1. กรองข้อมูลตามเครื่องที่เลือก (รองรับทั้ง mac และ device_id)
+    // 1. กรองข้อมูลตามเครื่องที่เลือก
     const filteredData = selectedDeviceMac === 'ALL' 
       ? data 
       : data.filter((item: any) => {
@@ -41,10 +41,10 @@ export default function WaterLevelChart({
 
     if (filteredData.length === 0) return { labels: [], datasets: [] };
 
-    // 2. สร้าง Labels (เวลา) - แสดงตามข้อมูลจริงที่ได้รับมาทั้งหมด (ไม่ตัด slice)
+    // 2. สร้าง Labels (เวลา) - ปรับรูปแบบตามปริมาณข้อมูล
     const labels = filteredData.map((item: any) => {
       const d = new Date(item.createdAt || item.timestamp);
-      // ถ้าเป็นข้อมูลย้อนหลังหลายวัน ให้แสดงวันที่ด้วย
+      // ถ้าข้อมูลเยอะให้โชว์แค่วันที่/เวลาสั้นๆ
       return d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
     });
 
@@ -58,10 +58,10 @@ export default function WaterLevelChart({
       }),
       borderColor: color,
       backgroundColor: color + '15',
-      borderWidth: 2, // ปรับให้เส้นบางลงหน่อยถ้าข้อมูลเยอะ (Week/Month)
-      pointRadius: filteredData.length > 50 ? 0 : 3, // ถ้าจุดเยอะเกินไปให้ซ่อนจุดเพื่อให้กราฟลื่น
+      borderWidth: 2,
+      pointRadius: filteredData.length > 50 ? 0 : 3, // ซ่อนจุดถ้าข้อมูลเยอะเกินไปเพื่อความสวย
       pointHoverRadius: 6,
-      tension: 0.3,
+      tension: 0.4,
       fill: true,
       yAxisID: yAxisID,
       spanGaps: true
@@ -86,6 +86,14 @@ export default function WaterLevelChart({
   const options: any = {
     responsive: true,
     maintainAspectRatio: false,
+    layout: {
+      padding: {
+        bottom: 20, // ✅ แก้ปัญหาตัวเลขจม เพิ่มพื้นที่ด้านล่าง
+        left: 10,
+        right: 10,
+        top: 10
+      }
+    },
     interaction: { mode: 'index', intersect: false },
     plugins: {
       legend: {
@@ -103,23 +111,26 @@ export default function WaterLevelChart({
         ticks: { 
           color: isDark ? '#64748b' : '#94a3b8', 
           font: { size: 10 },
-          maxTicksLimit: 10 // ช่วยให้เวลาข้อมูลเยอะๆ ตัวอักษรแกน X ไม่ซ้อนกัน
+          maxRotation: 45, // ✅ เอียงตัวเลข 45 องศา กันซ้อนกัน
+          minRotation: 45,
+          autoSkip: true,
+          maxTicksLimit: 12 
         },
         grid: { display: false }
       },
       y: {
         type: 'linear', display: true, position: 'left',
-        ticks: { color: '#3b82f6' },
+        ticks: { color: '#3b82f6', font: { size: 10 } },
         grid: { color: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }
       },
       y1: {
         type: 'linear', display: viewMode === 'ALL_METRICS', position: 'right',
-        ticks: { color: '#f97316' },
+        ticks: { color: '#f97316', font: { size: 10 } },
         grid: { drawOnChartArea: false }
       },
       y2: {
         type: 'linear', display: viewMode === 'ALL_METRICS', position: 'right',
-        ticks: { color: '#06b6d4' },
+        ticks: { color: '#06b6d4', font: { size: 10 } },
         grid: { drawOnChartArea: false },
       }
     }
@@ -127,6 +138,7 @@ export default function WaterLevelChart({
 
   return (
     <div className="w-full h-full flex flex-col p-2">
+      {/* 🔘 ปุ่มเลือกโหมดการแสดงผล */}
       <div className="flex flex-wrap gap-2 mb-6">
         <button
           onClick={() => setViewMode('ALL_METRICS')}
@@ -149,7 +161,7 @@ export default function WaterLevelChart({
           <Line data={chartData} options={options} />
         ) : (
           <div className="h-full flex items-center justify-center text-slate-400 text-xs italic border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-[2rem]">
-            ไม่มีข้อมูลในช่วงเวลาที่เลือก...
+            ไม่มีข้อมูลแสดงผลในช่วงนี้...
           </div>
         )}
       </div>
