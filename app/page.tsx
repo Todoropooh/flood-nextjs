@@ -224,7 +224,7 @@ function DashboardContent({ logs, devices, selectedDeviceMac, setSelectedDeviceM
             <div className="relative">
               <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="flex items-center gap-2 px-3 py-1.5 bg-white/50 dark:bg-white/5 rounded-lg hover:bg-white/80 transition-all border border-white/50 shadow-sm">
                 <span className="text-[11px] font-bold uppercase tracking-wider">
-                  {selectedDeviceMac === 'ALL' ? 'Overview' : devices.find((d:any) => d.mac === selectedDeviceMac)?.name || 'Unknown'}
+                  {selectedDeviceMac === 'ALL' ? 'Overview (กำลังทดสอบ)' : devices.find((d:any) => d.mac === selectedDeviceMac)?.name || 'Unknown'}
                 </span>
                 <ChevronDown size={14} />
               </button>
