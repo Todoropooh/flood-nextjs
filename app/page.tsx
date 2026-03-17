@@ -85,29 +85,37 @@ export default function Home() {
   const latestLog = displayLogs.length > 0 ? displayLogs[displayLogs.length - 1] : null;
   const currentDevice = displayDevices.length > 0 ? displayDevices[0] : null;
 
-  // ✅ 1. คำนวณระดับน้ำ (0-20 cm)
+  // ✅ 1. แก้ไข Logic 70-20 (0-7-14-20) ตามสั่ง
+  const sensorHeight = 70; // ติดตั้งสูง 70 cm
+  const tankMaxHeight = 20; // ถังสูง 20 cm
+  
   const sensorDist = Number(latestLog?.level ?? currentDevice?.waterLevel ?? 70);
-  let waterInTank = 70 - sensorDist;
-  if (waterInTank > 20) waterInTank = 20;
+  
+  // 🔄 สูตร: waterLevel = 70 - distance
+  let waterInTank = sensorHeight - sensorDist;
+
+  // Clamp ค่าให้อยู่ในสเกลถัง 20 cm
+  if (waterInTank > tankMaxHeight) waterInTank = tankMaxHeight;
   if (waterInTank < 0) waterInTank = 0;
 
   // ✅ 2. อุณหภูมิและความชื้น
   const currentTemp = Number(latestLog?.temperature ?? currentDevice?.temperature ?? 0);
   const currentHumid = Number(latestLog?.humidity ?? latestLog?.air_humidity ?? currentDevice?.humidity ?? 0);
 
-  // ✅ 3. ป้องกัน Infinite Loop แจ้งเตือน
-  if (waterInTank >= 10 && lastAlertState === 'NONE') {
+  // ✅ 3. ป้องกัน Loop แจ้งเตือน (แจ้งเตือนเมื่อไม่ใช่สถานะปลอดภัย)
+  if (waterInTank > 7 && lastAlertState === 'NONE') {
     setShowPushNoti(true);
     setLastAlertState('SHOWN');
-  } else if (waterInTank < 10 && lastAlertState === 'SHOWN') {
+  } else if (waterInTank <= 7 && lastAlertState === 'SHOWN') {
     setShowPushNoti(false);
     setLastAlertState('NONE');
   }
 
+  // ✅ 4. เกณฑ์แจ้งเตือนใหม่ 🟢 0-7 | 🟡 >7-14 | 🔴 >14-20
   const getStatusInfo = (w: number) => {
-    if (w >= 17) return { label: "🔴 วิกฤต: น้ำเต็มถัง", color: "text-red-500", bg: "bg-red-500" };
-    if (w >= 10) return { label: "🟠 เตือน: น้ำครึ่งถัง", color: "text-orange-500", bg: "bg-orange-500" };
-    return { label: "🟢 ปกติ: ปริมาณน้ำต่ำ", color: "text-emerald-500", bg: "bg-emerald-500" };
+    if (w > 14) return { label: "🔴 อันตราย", color: "text-red-500", bg: "bg-red-500" };
+    if (w > 7) return { label: "🟡 เฝ้าระวัง", color: "text-orange-500", bg: "bg-orange-500" };
+    return { label: "🟢 ปลอดภัย", color: "text-emerald-500", bg: "bg-emerald-500" };
   };
 
   const status = getStatusInfo(waterInTank);
@@ -116,15 +124,17 @@ export default function Home() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 relative transition-colors">
 
       {/* Pop-up Notification */}
-      {showPushNoti && waterInTank >= 10 && (
+      {showPushNoti && waterInTank > 7 && (
         <div className="fixed bottom-8 right-8 z-[200] animate-bounce">
           <div className={`p-4 rounded-2xl flex items-center gap-4 text-white shadow-2xl border-2 border-white/20 ${status.bg}`}>
             <AlertTriangle size={32} className="animate-pulse" />
             <div className="pr-6">
-              <h4 className="font-bold text-lg leading-tight">{waterInTank >= 17 ? 'วิกฤต!' : 'เตือนภัย!'}</h4>
-              <p className="text-sm opacity-90">น้ำในถัง {waterInTank.toFixed(1)} cm</p>
+              <h4 className="font-bold text-lg leading-tight">
+                {waterInTank > 14 ? '🚨 อันตราย!' : '⚠️ เฝ้าระวัง'}
+              </h4>
+              <p className="text-sm opacity-90">ระดับน้ำปัจจุบัน {waterInTank.toFixed(1)} cm</p>
             </div>
-            <button onClick={() => setShowPushNoti(false)} className="absolute top-2 right-2 p-1 hover:bg-white/20 rounded-full">✕</button>
+            <button onClick={() => setShowPushNoti(false)} className="absolute top-2 right-2 p-1 hover:bg-white/20 rounded-full transition-colors">✕</button>
           </div>
         </div>
       )}
@@ -135,9 +145,8 @@ export default function Home() {
           <div className="flex items-center gap-4">
             <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg"><Waves size={24}/></div>
             
-            {/* ✅ Dropdown เลือกอุปกรณ์ กลับมาแล้ว */}
             <div className="relative">
-              <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="flex items-center gap-2 bg-white dark:bg-slate-800 px-4 py-2 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 font-bold text-sm uppercase transition-all">
+              <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="flex items-center gap-2 bg-white dark:bg-slate-800 px-4 py-2 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 font-bold text-sm uppercase transition-all active:scale-95">
                 {selectedDeviceMac === 'ALL' ? '🌍 Overview' : `📍 ${currentDevice?.name || 'Device'}`}
                 <ChevronDown size={16} />
               </button>
@@ -155,10 +164,10 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <button className="relative p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
               <Bell size={20} />
-              {waterInTank >= 10 && (
+              {waterInTank > 7 && (
                 <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${waterInTank >= 17 ? 'bg-red-400' : 'bg-orange-400'}`}></span>
-                  <span className={`relative inline-flex rounded-full h-3 w-3 border-2 border-white dark:border-slate-900 ${waterInTank >= 17 ? 'bg-red-500' : 'bg-orange-500'}`}></span>
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${waterInTank > 14 ? 'bg-red-400' : 'bg-orange-400'}`}></span>
+                  <span className={`relative inline-flex rounded-full h-3 w-3 border-2 border-white dark:border-slate-900 ${waterInTank > 14 ? 'bg-red-500' : 'bg-orange-500'}`}></span>
                 </span>
               )}
             </button>
@@ -174,24 +183,25 @@ export default function Home() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard label="Water Level" val={waterInTank.toFixed(1)} unit="cm" icon={<Waves/>} color={status.color} />
-          <MetricCard label="Temp" val={currentTemp.toFixed(1)} unit="°C" icon={<Thermometer/>} color="text-orange-500" />
-          <MetricCard label="Humid" val={currentHumid.toFixed(0)} unit="%" icon={<Droplets/>} color="text-emerald-500" />
-          <MetricCard label="Status" val={status.label} unit="" icon={<Activity/>} color={status.color} />
+          <MetricCard label="ระดับน้ำ (Water Level)" val={waterInTank.toFixed(1)} unit="cm" icon={<Waves/>} color={status.color} />
+          <MetricCard label="อุณหภูมิ" val={currentTemp.toFixed(1)} unit="°C" icon={<Thermometer/>} color="text-orange-500" />
+          <MetricCard label="ความชื้น" val={currentHumid.toFixed(0)} unit="%" icon={<Droplets/>} color="text-emerald-500" />
+          <MetricCard label="สถานะปัจจุบัน" val={status.label} unit="" icon={<Activity/>} color={status.color} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm min-h-[450px] flex flex-col">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Activity size={18} className="text-blue-600"/> Trends</h3>
-              <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+              <h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Activity size={18} className="text-blue-600"/> Trend Analytics</h3>
+              <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl shadow-inner">
                 {['day', 'week', 'month'].map(tf => (
-                  <button key={tf} onClick={() => setTimeframe(tf)} className={`px-4 py-1 text-[10px] font-bold uppercase rounded-lg ${timeframe === tf ? 'bg-white dark:bg-slate-700 text-blue-600' : 'text-slate-500'}`}>{tf}</button>
+                  <button key={tf} onClick={() => setTimeframe(tf)} className={`px-4 py-1 text-[10px] font-bold uppercase rounded-lg transition-all ${timeframe === tf ? 'bg-white dark:bg-slate-700 text-blue-600' : 'text-slate-500'}`}>{tf}</button>
                 ))}
               </div>
             </div>
             <div className="flex-grow"><WaterLevelChart data={displayLogs} timeframe={timeframe} isDark={resolvedTheme === 'dark'} devices={devices} selectedDeviceMac={selectedDeviceMac} /></div>
           </div>
+          {/* ✅ ถังน้ำแสดงตาม waterInTank 0-20 cm */}
           <WaterTank level={waterInTank} />
         </div>
 
@@ -205,7 +215,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ✅ แผนที่กลับมาแล้ว พร้อมส่งข้อมูล displayDevices เข้าไป */}
         <div className="bg-white dark:bg-slate-900 p-2 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div className="h-[450px] w-full rounded-[2rem] overflow-hidden">
             <DeviceMap devices={displayDevices} />
@@ -224,7 +233,7 @@ function MetricCard({ label, val, unit, icon, color }: any) {
         <div className={`p-2 rounded-xl bg-slate-50 dark:bg-slate-800 ${color}`}>{icon}</div>
       </div>
       <div>
-        <span className={`text-3xl font-black ${color}`}>{val}</span>
+        <span className={`text-3xl font-black ${color} break-words leading-tight`}>{val}</span>
         <span className="text-xs font-bold text-slate-400 ml-1">{unit}</span>
       </div>
     </div>

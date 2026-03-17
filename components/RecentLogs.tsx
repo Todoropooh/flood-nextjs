@@ -1,4 +1,3 @@
-// components/RecentLogs.tsx
 'use client';
 
 interface Log {
@@ -14,7 +13,7 @@ export default function RecentLogs({ logs }: { logs: Log[] }) {
       <div className="p-4 border-b border-slate-700 bg-slate-800/50">
         <h3 className="font-semibold text-slate-200">ประวัติล่าสุด (Recent Logs)</h3>
       </div>
-      <div className="overflow-y-auto max-h-[300px]">
+      <div className="overflow-y-auto max-h-[400px]">
         <table className="w-full text-sm text-left">
           <thead className="text-xs text-slate-400 uppercase bg-slate-900/50 sticky top-0">
             <tr>
@@ -24,19 +23,28 @@ export default function RecentLogs({ logs }: { logs: Log[] }) {
             </tr>
           </thead>
           <tbody>
-            {/* ✅ ใช้ .reverse() เพื่อให้ข้อมูลล่าสุดเด้งมาอยู่บรรทัดแรกของตาราง */}
             {[...logs].reverse().map((log) => {
               
-              // ✅ 1. แปลงระยะเซนเซอร์เป็นความสูงน้ำจริง (0-20 ซม.)
+              // ✅ 1. คำนวณระดับน้ำ: 70 - distance
+              const sensorHeight = 70;
               const rawDist = Number(log.level) || 70;
-              let waterLevel = 70 - rawDist;
+              let waterLevel = sensorHeight - rawDist;
+              
+              // Clamp ค่าให้อยู่ในสเกลถัง 20 cm
               if (waterLevel > 20) waterLevel = 20;
               if (waterLevel < 0) waterLevel = 0;
 
-              // ✅ 2. คำนวณสถานะใหม่ให้ตรงกับหน้า Dashboard (วิกฤต >= 17, เตือน >= 10)
-              let displayStatus = 'Normal';
-              if (waterLevel >= 17) displayStatus = 'Critical';
-              else if (waterLevel >= 10) displayStatus = 'Warning';
+              // ✅ 2. กำหนดเกณฑ์แจ้งเตือนใหม่ (7 / 14) และใช้ชื่อภาษาไทย
+              let displayStatus = 'ปลอดภัย';
+              let statusClasses = 'bg-emerald-500/20 text-emerald-400';
+
+              if (waterLevel > 14) {
+                displayStatus = 'อันตราย';
+                statusClasses = 'bg-red-500/20 text-red-400';
+              } else if (waterLevel > 7) {
+                displayStatus = 'เฝ้าระวัง';
+                statusClasses = 'bg-orange-500/20 text-orange-400';
+              }
 
               return (
                 <tr key={log._id} className="border-b border-slate-700 hover:bg-slate-700/50 transition-colors">
@@ -44,17 +52,12 @@ export default function RecentLogs({ logs }: { logs: Log[] }) {
                     {new Date(log.createdAt).toLocaleTimeString('th-TH')}
                   </td>
                   
-                  {/* ✅ โชว์ความสูงน้ำจริง */}
                   <td className="px-6 py-3 font-medium text-white">
                     {waterLevel.toFixed(1)} cm
                   </td>
                   
                   <td className="px-6 py-3">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold
-                      ${displayStatus === 'Critical' ? 'bg-red-500/20 text-red-400' :
-                        displayStatus === 'Warning' ? 'bg-orange-500/20 text-orange-400' :
-                        'bg-emerald-500/20 text-emerald-400'
-                      }`}>
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${statusClasses}`}>
                       {displayStatus}
                     </span>
                   </td>
@@ -64,7 +67,9 @@ export default function RecentLogs({ logs }: { logs: Log[] }) {
           </tbody>
         </table>
         {logs.length === 0 && (
-          <div className="p-6 text-center text-slate-500">ยังไม่มีข้อมูล</div>
+          <div className="p-10 text-center text-slate-500 italic">
+            ไม่มีข้อมูลบันทึกในขณะนี้
+          </div>
         )}
       </div>
     </div>
