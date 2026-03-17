@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import * as htmlToImage from 'html-to-image'; // 🌟 เปลี่ยนมาใช้ค่ายนี้แทน!
+import * as htmlToImage from 'html-to-image'; // 🌟 ใช้ html-to-image ถ่ายรูปกราฟ
 
 // 🌟 Import Component
 import NodeModal from '@/components/NodeModal'; 
@@ -57,19 +57,6 @@ export default function AdminPage() {
     setTimeout(() => setShowUI(true), 100);
   }, []);
 
-  useEffect(() => {
-    if (isExportModalOpen) {
-      fetch(`/api/flood?timeframe=month`)
-        .then(res => res.json())
-        .then(data => {
-          const cutoffTime = Date.now() - (exportDays * 24 * 60 * 60 * 1000);
-          const filtered = data.filter((l: any) => new Date(l.createdAt || l.timestamp).getTime() > cutoffTime);
-          setExportLogs(filtered);
-        })
-        .catch(err => console.error("Error fetching logs for PDF", err));
-    }
-  }, [isExportModalOpen, exportDays]);
-
   const fetchSettings = async () => {
     try {
       const res = await fetch('/api/settings');
@@ -110,7 +97,20 @@ export default function AdminPage() {
         });
         doc.save(`User_Report_${new Date().getTime()}.pdf`);
       } else {
-        // 🌟 1. แอบถ่ายรูปกราฟด้วย html-to-image (แก้ปัญหาเรื่อง Error สี)
+        // 🌟 1. ดึงข้อมูลให้เสร็จก่อน
+        const res = await fetch(`/api/flood?timeframe=month`);
+        let logs = [];
+        if (res.ok) logs = await res.json();
+        const cutoffTime = Date.now() - (exportDays * 24 * 60 * 60 * 1000);
+        const filteredLogs = logs.filter((l: any) => new Date(l.createdAt || l.timestamp).getTime() > cutoffTime);
+
+        // 🌟 เซ็ต State ให้ Component กราฟที่ซ่อนอยู่นำไปใช้วาด
+        setExportLogs(filteredLogs);
+
+        // 🌟 2. *** สำคัญมาก *** หน่วงเวลา 1.5 วินาที เพื่อให้ React วาดกราฟให้เสร็จ 100% ก่อนถ่ายรูป
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        // 🌟 3. แอบถ่ายรูปกราฟด้วย html-to-image
         const chartElem = document.getElementById('pdf-chart-container');
         let chartImgData = null;
         let canvasWidth = 800;
@@ -118,18 +118,18 @@ export default function AdminPage() {
 
         if (chartElem) {
           try {
-            canvasWidth = chartElem.offsetWidth;
-            canvasHeight = chartElem.offsetHeight;
+            canvasWidth = chartElem.offsetWidth || 800;
+            canvasHeight = chartElem.offsetHeight || 400;
             chartImgData = await htmlToImage.toPng(chartElem, { 
               backgroundColor: '#ffffff',
-              pixelRatio: 2 // ให้ภาพชัดระดับ HD
+              pixelRatio: 2 // ภาพชัด 2 เท่า
             });
           } catch (err) {
             console.error("ถ่ายรูปกราฟไม่สำเร็จ: ", err);
           }
         }
 
-        // 🌟 2. วาดหัวกระดาษ PDF
+        // 🌟 4. วาดหัวกระดาษ PDF
         doc.setFillColor(41, 128, 185); 
         doc.rect(0, 0, 210, 35, 'F');
         doc.setTextColor(255, 255, 255);
@@ -139,20 +139,20 @@ export default function AdminPage() {
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         doc.text(`Generated: ${now} | Period: Last ${exportDays} Days`, 14, 26);
-        doc.text(`Total Records: ${exportLogs.length} logs`, 14, 31);
+        doc.text(`Total Records: ${filteredLogs.length} logs`, 14, 31);
 
         let currentY = 45;
 
-        // 🌟 3. แปะรูปกราฟลงใน PDF (ถ้าถ่ายรูปสำเร็จ)
+        // 🌟 5. แปะรูปกราฟลงใน PDF (ถ้าถ่ายรูปสำเร็จ)
         if (chartImgData) {
-          const imgWidth = 182; // ความกว้างเต็มหน้ากระดาษ
-          const imgHeight = (canvasHeight * imgWidth) / canvasWidth; // คำนวณความสูงให้สมส่วน
+          const imgWidth = 182; // ความกว้างเต็มหน้ากระดาษ (เว้นขอบ 14mm)
+          const imgHeight = (canvasHeight * imgWidth) / canvasWidth; 
           doc.addImage(chartImgData, 'PNG', 14, currentY, imgWidth, imgHeight);
-          currentY += imgHeight + 10; // ดันจุดเริ่มต้นตารางลงมาใต้กราฟ
+          currentY += imgHeight + 10; 
         }
 
-        // 🌟 4. เตรียมข้อมูลลงตาราง
-        const tableData = exportLogs.map((l: any) => {
+        // 🌟 6. เตรียมข้อมูลลงตาราง (ใช้ filteredLogs ที่ดึงมาสดๆ ร้อนๆ)
+        const tableData = filteredLogs.map((l: any) => {
           const dName = devices.find(d => d.mac === l.mac || d.device_id === l.device_id)?.name || l.mac || 'Unknown';
           
           const sensorDist = Number(l.level) || 95;
@@ -173,7 +173,7 @@ export default function AdminPage() {
           ];
         });
 
-        // 🌟 5. สร้างตารางแบบ Auto-Paging
+        // 🌟 7. สร้างตารางแบบ Auto-Paging
         autoTable(doc, {
           startY: currentY,
           head: [['Date/Time', 'Node Name', 'Water (cm)', 'Temp (C)', 'Humid (%)', 'SIM Signal']],
@@ -482,13 +482,14 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* 🌟 ฐานลับนินจา: ซ่อนกราฟไว้เพื่อให้กล้องใหม่ (html-to-image) มาถ่ายรูป */}
+      {/* 🌟 ฐานลับนินจา: ซ่อนกราฟไว้หลังฉาก เพื่อรอดึงข้อมูลให้เสร็จแล้วถ่ายรูป */}
       <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '800px', height: '400px', zIndex: -50 }}>
         <div id="pdf-chart-container" style={{ width: '100%', height: '100%', backgroundColor: 'white', padding: '20px', borderRadius: '10px' }}>
            <h2 style={{ textAlign: 'center', color: '#1e293b', marginBottom: '15px', fontFamily: 'sans-serif', fontSize: '18px', fontWeight: 'bold' }}>
              Water Level Trend (Last {exportDays} Days)
            </h2>
            <div style={{ width: '100%', height: '320px' }}>
+             {/* 🌟 วาดกราฟจาก exportLogs ที่ดึงมาสดๆ ร้อนๆ */}
              <WaterLevelChart 
                data={exportLogs} 
                timeframe={exportDays === 1 ? 'day' : exportDays === 7 ? 'week' : 'month'} 
