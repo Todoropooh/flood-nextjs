@@ -17,7 +17,7 @@ const DeviceMap = dynamic(() => import('@/components/DeviceMap'), { ssr: false }
 
 // 📊 1. Component กราฟจิ๋ว (Sparkline) สำหรับใส่ในการ์ดอุปกรณ์
 function MiniChart({ data, color = "#3b82f6" }: { data: any[], color?: string }) {
-  if (!data || data.length === 0) return <div className="h-10" />; // ถ้าไม่มีข้อมูลให้เว้นที่ว่างไว้
+  if (!data || data.length === 0) return <div className="h-10" />; 
   return (
     <div className="h-10 w-full mt-1 opacity-50">
       <ResponsiveContainer width="100%" height="100%">
@@ -52,21 +52,25 @@ export default function Home() {
 
   const fetchData = async () => {
     try {
+      // ✨ เพิ่ม t เพื่อป้องกัน Cache ของเบราว์เซอร์
       const logRes = await fetch(`/api/flood?timeframe=${timeframe}&t=${Date.now()}`, { cache: 'no-store' });
-      if (logRes.ok) setLogs(await logRes.json());
+      if (logRes.ok) {
+        const logData = await logRes.json();
+        setLogs(logData || []);
+      }
       
       const deviceRes = await fetch(`/api/devices?t=${Date.now()}`, { cache: 'no-store' });
       if (deviceRes.ok) {
         const devData = await deviceRes.json();
-        setDevices(devData);
-        checkAndNotify(devData); // 🚀 เรียกใช้ฟังก์ชันแจ้งเตือน
+        setDevices(devData || []);
+        checkAndNotify(devData || []); 
       }
     } catch (e) { console.error("Fetch error:", e); }
   };
 
   // 🔔 ฟังก์ชันจัดการ Push Notification
   const checkAndNotify = (currentDevices: any[]) => {
-    if (!("Notification" in window)) return;
+    if (typeof window === "undefined" || !("Notification" in window)) return;
     
     if (Notification.permission === "default") {
       Notification.requestPermission();
@@ -102,7 +106,7 @@ export default function Home() {
   useEffect(() => {
     setIsMounted(true);
     fetchData();
-    if ("Notification" in window) Notification.requestPermission();
+    if (typeof window !== "undefined" && "Notification" in window) Notification.requestPermission();
     setTimeout(() => setShowUI(true), 150);
     const interval = setInterval(fetchData, 5000); 
     return () => clearInterval(interval);
@@ -113,32 +117,34 @@ export default function Home() {
   const displayLogs = selectedDeviceMac === 'ALL' ? logs : logs.filter(log => log.mac === selectedDeviceMac);
   const displayDevices = selectedDeviceMac === 'ALL' ? devices : devices.filter(d => d.mac === selectedDeviceMac);
 
+  // --- Logic การคำนวณค่าเพื่อนำไปโชว์ ---
   let currentLevel = 0, currentTemp = 0, currentHum = 0, systemStatus = 'NORMAL', lastUpdateTime = null;
 
   if (selectedDeviceMac !== 'ALL' && displayDevices.length > 0) {
     const d = displayDevices[0];
-    currentLevel = d.waterLevel || 0;
-    currentTemp = d.temperature || 0;
-    currentHum = d.humidity || 0;
+    currentLevel = d.waterLevel ?? 0;
+    currentTemp = d.temperature ?? 0;
+    currentHum = d.humidity ?? 0;
     lastUpdateTime = d.updatedAt || Date.now();
     if (currentLevel >= (d.criticalThreshold || 7)) systemStatus = 'CRITICAL';
     else if (currentLevel >= (d.warningThreshold || 3)) systemStatus = 'WARNING';
   } else if (devices.length > 0) {
-    currentLevel = Math.max(...devices.map(d => d.waterLevel || 0)); 
-    currentTemp = devices.reduce((sum, d) => sum + (d.temperature || 0), 0) / devices.length;
-    currentHum = devices.reduce((sum, d) => sum + (d.humidity || 0), 0) / devices.length;
-    lastUpdateTime = Date.now(); 
-    if (devices.some(d => (d.waterLevel || 0) >= (d.criticalThreshold || 7))) systemStatus = 'CRITICAL';
-    else if (devices.some(d => (d.waterLevel || 0) >= (d.warningThreshold || 3))) systemStatus = 'WARNING';
+    // ✨ ใช้ ?? เพื่อป้องกันการดึงค่า null แล้วกลายเป็น NaN
+    currentLevel = Math.max(...devices.map(d => d.waterLevel ?? 0)); 
+    currentTemp = devices.reduce((sum, d) => sum + (d.temperature ?? 0), 0) / devices.length;
+    currentHum = devices.reduce((sum, d) => sum + (d.humidity ?? 0), 0) / devices.length;
+    lastUpdateTime = devices[0]?.updatedAt || Date.now(); 
+    if (devices.some(d => (d.waterLevel ?? 0) >= (d.criticalThreshold || 7))) systemStatus = 'CRITICAL';
+    else if (devices.some(d => (d.waterLevel ?? 0) >= (d.warningThreshold || 3))) systemStatus = 'WARNING';
   }
 
-  const today = new Date();
-  const todayLogs = displayLogs.filter(log => log.createdAt && new Date(log.createdAt).toDateString() === today.toDateString());
+  const todayStr = new Date().toDateString();
+  const todayLogs = displayLogs.filter(log => log.createdAt && new Date(log.createdAt).toDateString() === todayStr);
+  
   const todayMaxLevel = todayLogs.length > 0 ? Math.max(...todayLogs.map(l => Number(l.level) || 0)) : 0;
   const todayAvgTemp = todayLogs.length > 0 ? (todayLogs.reduce((sum, l) => sum + (Number(l.temperature) || 0), 0) / todayLogs.length) : 0;
-  
-  // ✨ แก้ไขการดึงค่าเฉลี่ยความชื้นให้ครอบคลุมชื่อตัวแปร
   const todayAvgHum = todayLogs.length > 0 ? (todayLogs.reduce((sum, l) => {
+        // ✨ รองรับทั้งชื่อตัวแปร air_humidity และ humidity
         const h = l.air_humidity !== undefined ? l.air_humidity : (l.humidity || 0);
         return sum + Number(h);
       }, 0) / todayLogs.length) : 0;
@@ -206,7 +212,7 @@ export default function Home() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard label={selectedDeviceMac === 'ALL' ? 'Max Level' : 'Current Level'} val={currentLevel.toFixed(1)} unit="cm" subVal={`Peak: ${todayMaxLevel.toFixed(1)} cm`} icon={Waves} color="text-blue-500" showUI={showUI} delay="delay-[100ms]" />
           <MetricCard label="Temperature" val={currentTemp.toFixed(1)} unit="°C" subVal={`Avg: ${todayAvgTemp.toFixed(1)} °C`} icon={Thermometer} color="text-orange-500" showUI={showUI} delay="delay-[200ms]" />
-          <MetricCard label="Humidity" val={currentHum.toFixed(1)} unit="%" subVal={`Avg: ${todayAvgHum.toFixed(1)} %`} icon={Droplets} color="text-cyan-500" showUI={showUI} delay="delay-[300ms]" />
+          <MetricCard label="Humidity" val={currentHum.toFixed(0)} unit="%" subVal={`Avg: ${todayAvgHum.toFixed(0)} %`} icon={Droplets} color="text-cyan-500" showUI={showUI} delay="delay-[300ms]" />
           <StatusCard status={systemStatus} lastUpdate={lastUpdateTime} showUI={showUI} delay="delay-[400ms]" />
         </div>
 
@@ -217,7 +223,6 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               {devices.map((device) => {
                 const wl = device.waterLevel || 0;
-                // ✨ ดึงอุณหภูมิและความชื้นมาใช้ในการ์ดจิ๋ว
                 const temp = device.temperature || 0;
                 const hum = device.humidity || 0;
                 
@@ -246,7 +251,6 @@ export default function Home() {
                       <div className="p-2 rounded-xl bg-white/60 dark:bg-black/30 shadow-sm border border-white/50 dark:border-white/5 group-hover:rotate-12 transition-transform">{status.icon}</div>
                     </div>
                     
-                    {/* ✨ เพิ่มบรรทัดนี้: โชว์อุณหภูมิและความชื้นใต้ชื่ออุปกรณ์ */}
                     <div className="flex gap-3 mt-1 pl-1 text-[10px] font-medium text-slate-500 dark:text-slate-400">
                       <span className="flex items-center gap-1"><Thermometer size={10} className="text-orange-500" /> {temp.toFixed(1)}°C</span>
                       <span className="flex items-center gap-1"><Droplets size={10} className="text-cyan-500" /> {hum.toFixed(1)}%</span>
@@ -298,7 +302,6 @@ export default function Home() {
   );
 }
 
-// MetricCard, StatusCard ...
 function MetricCard({ label, val, unit, subVal, icon: Icon, color, showUI, delay }: any) {
   return (
     <div className={`transform transition-all duration-1000 cubic-bezier(0.16, 1, 0.3, 1) ${delay} ${showUI ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-10 opacity-0 scale-95'}`}>

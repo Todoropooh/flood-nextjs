@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
-// 1. กำหนดโครงสร้าง Interface สำหรับ TypeScript
+// 1. กำหนดโครงสร้าง Interface สำหรับ TypeScript (ต้องตรงกับ JSON จาก ESP32)
 export interface IWaterLog extends Document {
   mac: string;           // รหัสประจำตัวเครื่อง (ESP32)
   level: number;         // ระดับน้ำ (cm)
@@ -18,7 +18,7 @@ const WaterLogSchema: Schema = new Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-// 3. Export Model (เช็คว่ามีอยู่แล้วหรือยังเพื่อป้องกัน Error ใน Next.js)
+// 3. Export Model (เช็คว่ามี Model อยู่แล้วหรือยัง เพื่อป้องกัน Overwrite Error ใน Next.js)
 const WaterLog: Model<IWaterLog> = mongoose.models.WaterLog || mongoose.model<IWaterLog>('WaterLog', WaterLogSchema);
 
 export default WaterLog;
