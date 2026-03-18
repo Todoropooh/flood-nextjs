@@ -21,7 +21,7 @@ const DeviceMap = dynamic(() => import('@/components/DeviceMap'), {
   loading: () => <div className="h-[400px] w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-2xl" />
 });
 
-// 🌟 Component ใหม่: สร้างแท่งสัญญาณมือถือ 4 ขีด (อิงตามค่า CSQ)
+// 🌟 Component สร้างแท่งสัญญาณมือถือ 4 ขีด
 function SignalBars({ csq }: { csq: number }) {
   let bars = 0;
   if (csq > 20 && csq !== 99) bars = 4;      // Excellent
@@ -49,10 +49,7 @@ export default function Home() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [timeframe, setTimeframe] = useState('day');
-  
-  // 🌟 State ใหม่สำหรับสลับแท็บดู Log
   const [logTab, setLogTab] = useState<'ALL' | 'ALERTS'>('ALL');
-  
   const { setTheme, resolvedTheme } = useTheme();
 
   useEffect(() => { setIsMounted(true); }, []);
@@ -129,7 +126,8 @@ export default function Home() {
 
   const trends = { water: getTrend(waterInTank, 'level'), temp: getTrend(currentTemp, 'temp'), humid: getTrend(currentHumid, 'humid') };
 
-  const status = waterInTank >= 17 ? { label: "CRITICAL", color: "text-red-500", bg: "bg-red-500", icon: <ShieldAlert size={20}/>, border: "border-red-500/30" }
+  // 🌟 อัปเดตเกณฑ์แจ้งเตือน (แดง >= 20, ส้ม >= 10)
+  const status = waterInTank >= 20 ? { label: "CRITICAL", color: "text-red-500", bg: "bg-red-500", icon: <ShieldAlert size={20}/>, border: "border-red-500/30" }
                : waterInTank >= 10 ? { label: "WARNING", color: "text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle size={20}/>, border: "border-orange-500/30" }
                : { label: "STABLE", color: "text-emerald-500", bg: "bg-emerald-500", icon: <CheckCircle2 size={20}/>, border: "border-emerald-500/30" };
 
@@ -141,17 +139,14 @@ export default function Home() {
     const minRawDist = Math.min(...filteredLogs.map(l => Number(l.level || 84.0)));
     const maxW = calculateWater(minRawDist);
     
-    // ตัดค่า CSQ 99 ออกจากการหาค่าเฉลี่ย
     const validSignals = filteredLogs.filter(l => Number(l.signal) !== 99 && Number(l.signal) > 0);
     const avgSig = validSignals.length > 0 ? validSignals.reduce((acc, l) => acc + Number(l.signal), 0) / validSignals.length : 0;
     
     const latestLog = filteredLogs[filteredLogs.length - 1];
     const updateTime = latestLog?.timestamp ? new Date(latestLog.timestamp).toLocaleTimeString('th-TH') : 'Just now';
 
-    // 🌟 คำนวณ Rate of Change (ซม./ชั่วโมง)
     let rateStr = "0.0";
     if (filteredLogs.length >= 2) {
-      // หาข้อมูลเมื่อประมาณ 1 ชั่วโมงที่แล้ว
       const oneHourAgoTime = new Date(latestLog.timestamp).getTime() - 3600000;
       const oldLog = filteredLogs.find(l => new Date(l.timestamp).getTime() >= oneHourAgoTime) || filteredLogs[0];
       
@@ -168,7 +163,6 @@ export default function Home() {
   // 🌟 ฟิลเตอร์ Log สำหรับตารางแยกตามแท็บ
   const displayLogs = useMemo(() => {
     let l = logs.filter(l => selectedDeviceMac === 'ALL' || (l.mac || l.device_id) === selectedDeviceMac);
-    // ถ้าเลือกแท็บ ALERTS ให้กรองเฉพาะตอนที่น้ำ >= 10 ซม. (เข้าเกณฑ์ส้ม/แดง)
     if (logTab === 'ALERTS') {
       l = l.filter(log => calculateWater(log.level) >= 10);
     }
@@ -247,6 +241,37 @@ export default function Home() {
           </div>
         </div>
 
+        {/* 🌟 Data Insights ย้ายมาไว้ใต้ส่วนบนสุด */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+           <InsightCard 
+             icon={<ActivitySquare size={16}/>} 
+             title="Rate of Change" 
+             value={insights.rateOfChange} 
+             unit="CM / HR" 
+             color={Number(insights.rateOfChange) > 0 ? "text-orange-500" : "text-emerald-500"} 
+           />
+           <InsightCard 
+             icon={<TrendingUp size={16}/>} 
+             title="Highest Level" 
+             value={insights.maxWater.toFixed(1)} 
+             unit="CM" 
+             color="text-blue-500" 
+           />
+           <InsightCard 
+             icon={<Signal size={16}/>} 
+             title="Network Signal" 
+             customValue={<div className="flex items-center gap-3"><SignalBars csq={insights.avgSignal} /> <span className="text-[10px] font-bold text-slate-400 uppercase">({insights.avgSignal.toFixed(0)} CSQ)</span></div>}
+             color="text-indigo-500" 
+           />
+           <InsightCard 
+             icon={<History size={16}/>} 
+             title="Total Data Points" 
+             value={insights.total} 
+             unit="Logs" 
+             color="text-amber-500" 
+           />
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-8 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col min-h-[450px]">
             <div className="flex justify-between items-center mb-6">
@@ -279,7 +304,6 @@ export default function Home() {
              </div>
           </div>
           
-          {/* 🌟 ปรับปรุงกล่อง Recent Logs ให้มี 2 แท็บ (All / Alerts) */}
           <div className="xl:col-span-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col h-[435px]">
              <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -306,44 +330,11 @@ export default function Home() {
           </div>
         </div>
 
-        {/* 🌟 Data Insights ด้านล่างสุด (เพิ่ม Rate of Change และปรับหน้าตาสัญญาณ CSQ) */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
-           <InsightCard 
-             icon={<ActivitySquare size={16}/>} 
-             title="Rate of Change" 
-             value={insights.rateOfChange} 
-             unit="CM / HR" 
-             color={Number(insights.rateOfChange) > 0 ? "text-orange-500" : "text-emerald-500"} 
-           />
-           <InsightCard 
-             icon={<TrendingUp size={16}/>} 
-             title="Highest Level" 
-             value={insights.maxWater.toFixed(1)} 
-             unit="CM" 
-             color="text-blue-500" 
-           />
-           <InsightCard 
-             icon={<Signal size={16}/>} 
-             title="Network Signal" 
-             // ส่งเกจสัญญาณเข้าไปแทนตัวเลข
-             customValue={<div className="flex items-center gap-3"><SignalBars csq={insights.avgSignal} /> <span className="text-[10px] font-bold text-slate-400 uppercase">({insights.avgSignal.toFixed(0)} CSQ)</span></div>}
-             color="text-indigo-500" 
-           />
-           <InsightCard 
-             icon={<History size={16}/>} 
-             title="Total Data Points" 
-             value={insights.total} 
-             unit="Logs" 
-             color="text-amber-500" 
-           />
-        </div>
-
       </main>
     </div>
   );
 }
 
-// Metric Card เล็กลงและคลีนขึ้น
 function MetricCard({ label, val, unit, icon, color, trend }: any) {
   return (
     <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between h-32 group hover:border-blue-200 dark:hover:border-slate-700 transition-all">
@@ -366,7 +357,6 @@ function MetricCard({ label, val, unit, icon, color, trend }: any) {
   );
 }
 
-// 🌟 Component InsightCard แก้ให้รองรับ Custom Value ได้
 function InsightCard({ icon, title, value, unit, color, customValue }: any) {
   return (
     <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">

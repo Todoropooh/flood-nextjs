@@ -30,20 +30,20 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
     : defaultCenter;
 
   const createCustomIcon = (device: any) => {
-    // ✅ 1. รับค่าระยะเซนเซอร์ (ถ้าไม่มีข้อมูลให้ถือว่าห่าง 95 คือน้ำแห้ง)
-    const rawDist = Number(device.waterLevel ?? device.level ?? 95);
+    // ✅ 1. รับค่าระยะเซนเซอร์ (อิงค่าเริ่มต้น 84.0 ตามหน้าแรก)
+    const rawDist = Number(device.waterLevel ?? device.level ?? 84.0);
     
-    // ✅ 2. คำนวณความสูงน้ำจริง (สูตร 95cm ของเรา)
-    let wl = 95 - rawDist;
+    // ✅ 2. คำนวณความสูงน้ำจริงด้วยสูตรเดียวกับหน้าหลัก (หักลบความคลาดเคลื่อน 5.0 ซม.)
+    let wl = (84.0 - rawDist) - 5.0;
     
-    // จัดการค่ารบกวน (Noise)
-    if (rawDist <= 0.5 || rawDist > 85) wl = 0; 
+    // จัดการค่ารบกวน (Noise) และขีดจำกัดความสูงถัง 40 ซม.
+    if (rawDist <= 0.5 || rawDist > 90) wl = 0; 
     if (wl < 0) wl = 0;
-    if (wl > 20) wl = 20;
+    if (wl > 40) wl = 40;
     
-    // ✅ 3. เช็คเงื่อนไขสีหมุด (วิกฤต > 14 [แดง], เตือน > 7 [ส้ม], ปกติ [เขียว])
-    const isCritical = wl > 14.0;
-    const isWarning = wl > 7.0;
+    // ✅ 3. เช็คเงื่อนไขสีหมุด (วิกฤต >= 20 [แดง], เตือน >= 10 [ส้ม], ปกติ [เขียว])
+    const isCritical = wl >= 20.0;
+    const isWarning = wl >= 10.0;
     
     const dotColor = isCritical ? 'bg-red-500' : isWarning ? 'bg-orange-500' : 'bg-emerald-500';
     const textColor = isCritical ? 'text-red-600 dark:text-red-400' : isWarning ? 'text-orange-600 dark:text-orange-400' : 'text-emerald-600 dark:text-emerald-400';
@@ -70,6 +70,19 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
     });
   };
 
+  // ✅ ฟังก์ชันช่วยกำหนดสถานะข้อความใน Popup ให้ตรงกับเกณฑ์
+  const getStatusInfo = (device: any) => {
+    const rawDist = Number(device.waterLevel ?? device.level ?? 84.0);
+    let wl = (84.0 - rawDist) - 5.0;
+    if (rawDist <= 0.5 || rawDist > 90) wl = 0; 
+    if (wl < 0) wl = 0;
+    if (wl > 40) wl = 40;
+
+    if (wl >= 20.0) return { text: 'อันตราย (Critical)', color: 'text-red-600' };
+    if (wl >= 10.0) return { text: 'เฝ้าระวัง (Warning)', color: 'text-orange-600' };
+    return { text: 'ปกติ (Stable)', color: 'text-emerald-600' };
+  };
+
   return (
     <MapContainer 
       center={center as L.LatLngExpression} 
@@ -84,6 +97,9 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
       
       {devices.map((device, idx) => {
          if (!device.lat || !device.lng) return null; 
+         
+         const statusInfo = getStatusInfo(device);
+
          return (
            <Marker 
              key={device.mac || idx} 
@@ -94,7 +110,9 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
                <div className="text-center p-1 font-sans">
                  <h3 className="font-bold text-sm text-slate-800">{device.name}</h3>
                  <p className="text-[10px] text-slate-500 font-mono mt-1 uppercase">{device.mac}</p>
-                 <p className="text-[11px] font-bold mt-1 text-blue-600">สถานะ: ปกติ</p>
+                 <p className={`text-[11px] font-bold mt-1 ${statusInfo.color}`}>
+                   สถานะ: {statusInfo.text}
+                 </p>
                </div>
              </Popup>
            </Marker>

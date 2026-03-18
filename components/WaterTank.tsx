@@ -10,13 +10,13 @@ export default function WaterTank({ level = 0 }: { level: number }) {
   // 2. คำนวณเป็นเปอร์เซ็นต์ (อัปเดตตัวหารเป็น 40)
   const fillPercentage = (safeLevel / 40) * 100;
 
-  // 3. 🌟 กำหนดสีน้ำตามระยะเตือนใหม่ (>= 17 อันตราย, >= 10 เฝ้าระวัง)
+  // 3. 🌟 กำหนดสีน้ำตามระยะเตือนใหม่ (>= 20 อันตราย, >= 10 เฝ้าระวัง)
   let waterColor = 'from-emerald-400 to-emerald-600'; // สีปกติ (เขียว STABLE)
   let waveColor = 'bg-emerald-300';
   let statusText = 'STABLE';
   let textColor = 'text-emerald-500';
 
-  if (safeLevel >= 17) {
+  if (safeLevel >= 20) { // <--- 🌟 แก้ตรงนี้เป็น 20 ซม.
     waterColor = 'from-red-400 to-red-600';
     waveColor = 'bg-red-300';
     statusText = 'CRITICAL';
