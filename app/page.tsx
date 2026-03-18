@@ -21,7 +21,6 @@ const DeviceMap = dynamic(() => import('@/components/DeviceMap'), {
   loading: () => <div className="h-[400px] w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-2xl" />
 });
 
-// Component สร้างแท่งสัญญาณมือถือ 4 ขีด
 function SignalBars({ csq }: { csq: number }) {
   let bars = 0;
   if (csq > 20 && csq !== 99) bars = 4;      
@@ -50,20 +49,14 @@ export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   const [timeframe, setTimeframe] = useState('day');
   const [logTab, setLogTab] = useState<'ALL' | 'ALERTS'>('ALL');
-  
-  // 🌟 State สำหรับ Web Push Notification
   const [lastNotifiedLogId, setLastNotifiedLogId] = useState<string | null>(null);
-  
   const { setTheme, resolvedTheme } = useTheme();
 
   useEffect(() => { setIsMounted(true); }, []);
 
-  // 🌟 ขออนุญาตแจ้งเตือนบนเบราว์เซอร์
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'default') {
-        Notification.requestPermission();
-      }
+      if (Notification.permission === 'default') Notification.requestPermission();
     }
   }, []);
 
@@ -96,28 +89,19 @@ export default function Home() {
     return val < 0 ? 0 : (val > 40 ? 40 : val); 
   }, []);
 
-  // 🌟 Logic สั่ง Web Push Notification แจ้งเตือนหน้าจอ
   useEffect(() => {
     if (logs.length > 0) {
-      const activeLogs = selectedDeviceMac === 'ALL' 
-        ? logs 
-        : logs.filter(l => (l.mac || l.device_id) === selectedDeviceMac);
-        
+      const activeLogs = selectedDeviceMac === 'ALL' ? logs : logs.filter(l => (l.mac || l.device_id) === selectedDeviceMac);
       if (activeLogs.length > 0) {
         const latestLog = activeLogs[activeLogs.length - 1];
         const wl = calculateWater(latestLog.level);
 
         if (wl >= 10.0 && latestLog._id !== lastNotifiedLogId) {
           setLastNotifiedLogId(latestLog._id); 
-
           if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
             const alertTitle = wl >= 20.0 ? '🚨 อันตรายระดับน้ำวิกฤต!' : '⚠️ เฝ้าระวังระดับน้ำ!';
-            const timeStr = new Date(latestLog.timestamp || latestLog.createdAt || Date.now()).toLocaleTimeString('th-TH');
-            
-            new Notification(alertTitle, {
-              body: `ระดับน้ำปัจจุบัน: ${wl.toFixed(1)} cm\nเวลา: ${timeStr}`,
-              icon: '/favicon.ico', 
-            });
+            const timeStr = new Date(latestLog.createdAt || latestLog.timestamp || Date.now()).toLocaleTimeString('th-TH');
+            new Notification(alertTitle, { body: `ระดับน้ำปัจจุบัน: ${wl.toFixed(1)} cm\nเวลา: ${timeStr}`, icon: '/favicon.ico' });
           }
         }
       }
@@ -170,25 +154,32 @@ export default function Home() {
                : waterInTank >= 10 ? { label: "WARNING", color: "text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle size={20}/>, border: "border-orange-500/30" }
                : { label: "STABLE", color: "text-emerald-500", bg: "bg-emerald-500", icon: <CheckCircle2 size={20}/>, border: "border-emerald-500/30" };
 
+  // 🌟 จุดที่แก้บัค: Insights
   const insights = useMemo(() => {
     const filteredLogs = selectedDeviceMac === 'ALL' ? logs : logs.filter(l => (l.mac || l.device_id) === selectedDeviceMac);
     if (!filteredLogs.length) return { maxWater: 0, avgSignal: 0, total: 0, lastUpdate: 'N/A', rateOfChange: '0.0' };
     
-    const minRawDist = Math.min(...filteredLogs.map(l => Number(l.level || 84.0)));
-    const maxW = calculateWater(minRawDist);
+    // ✅ 1. แก้ Highest Level (ดึงค่าหลังจากเข้าสูตรแล้วมาหา Max)
+    const allWaterLevels = filteredLogs.map(l => calculateWater(l.level));
+    const maxW = allWaterLevels.length > 0 ? Math.max(...allWaterLevels) : 0;
     
+    // ✅ 2. Network Signal 
     const validSignals = filteredLogs.filter(l => Number(l.signal) !== 99 && Number(l.signal) > 0);
     const avgSig = validSignals.length > 0 ? validSignals.reduce((acc, l) => acc + Number(l.signal), 0) / validSignals.length : 0;
     
     const latestLog = filteredLogs[filteredLogs.length - 1];
-    const updateTime = latestLog?.timestamp ? new Date(latestLog.timestamp).toLocaleTimeString('th-TH') : 'Just now';
+    const updateTime = latestLog?.createdAt ? new Date(latestLog.createdAt).toLocaleTimeString('th-TH') : 'Just now';
 
+    // ✅ 3. แก้ Rate of Change (ใช้ .createdAt แทน .timestamp)
     let rateStr = "0.0";
     if (filteredLogs.length >= 2) {
-      const oneHourAgoTime = new Date(latestLog.timestamp).getTime() - 3600000;
-      const oldLog = filteredLogs.find(l => new Date(l.timestamp).getTime() >= oneHourAgoTime) || filteredLogs[0];
+      const latestTime = new Date(latestLog.createdAt || latestLog.timestamp).getTime();
+      const oneHourAgoTime = latestTime - 3600000;
       
-      const timeDiffHours = (new Date(latestLog.timestamp).getTime() - new Date(oldLog.timestamp).getTime()) / 3600000;
+      const oldLog = filteredLogs.find(l => new Date(l.createdAt || l.timestamp).getTime() >= oneHourAgoTime) || filteredLogs[0];
+      const oldTime = new Date(oldLog.createdAt || oldLog.timestamp).getTime();
+      
+      const timeDiffHours = (latestTime - oldTime) / 3600000;
       if (timeDiffHours > 0) {
         const rate = (calculateWater(latestLog.level) - calculateWater(oldLog.level)) / timeDiffHours;
         rateStr = (rate > 0 ? "+" : "") + rate.toFixed(1);
@@ -239,11 +230,7 @@ export default function Home() {
             </div>
             <div className="h-5 w-px bg-slate-200 dark:bg-slate-800"></div>
             
-            <button 
-              onClick={() => window.print()} 
-              className="flex items-center gap-2 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg"
-              title="Save Data & Chart as PDF"
-            >
+            <button onClick={() => window.print()} className="flex items-center gap-2 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg" title="Save Data & Chart as PDF">
               <FileText size={16} />
               <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Export PDF</span>
             </button>
@@ -256,7 +243,6 @@ export default function Home() {
 
       <main className="max-w-[1600px] mx-auto p-4 sm:p-6 space-y-6 print:p-0 print:m-0 print:space-y-4">
         
-        {/* หัวกระดาษที่จะโชว์เฉพาะตอนเซฟเป็น PDF */}
         <div className="hidden print:block mb-6 border-b pb-4">
           <h1 className="text-3xl font-black text-slate-800 mb-2">Flood Data Report</h1>
           <p className="text-sm text-slate-600"><strong>Generated on:</strong> {new Date().toLocaleString('th-TH')}</p>
@@ -264,7 +250,6 @@ export default function Home() {
           <p className="text-sm text-slate-600"><strong>Timeframe:</strong> {timeframe.toUpperCase()}</p>
         </div>
 
-        {/* 🌟 ซ่อนการ์ดหลัก และ Insight ตอนปริ้นท์ (ตามที่คุณต้องการ Export แค่ Data & Chart) */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 print:hidden">
           <MetricCard label="Water Level" val={waterInTank.toFixed(1)} unit="CM" icon={<Waves size={18}/>} color={status.color} trend={trends.water} />
           <MetricCard label="Temperature" val={currentTemp.toFixed(1)} unit="°C" icon={<Thermometer size={18}/>} color="text-orange-500" trend={trends.temp} />
@@ -287,7 +272,6 @@ export default function Home() {
            <InsightCard icon={<History size={16}/>} title="Total Data Points" value={insights.total} unit="Logs" color="text-amber-500" />
         </div>
 
-        {/* 🌟 1. ส่วนกราฟ (ตอนปริ้นท์ให้ขยายเต็ม 100% ไม่มีขอบ) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 print:block">
           <div className="lg:col-span-8 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col min-h-[450px] print:w-full print:border-none print:shadow-none print:p-0 print:mb-8 print:min-h-[300px]">
             <div className="flex justify-between items-center mb-6 print:hidden">
@@ -298,21 +282,17 @@ export default function Home() {
                 ))}
               </div>
             </div>
-            {/* หัวข้อกราฟตอนปริ้นท์ */}
             <h2 className="hidden print:block text-xl font-bold mb-4">1. Trend Analytics Chart</h2>
             <div className="flex-grow">
               <WaterLevelChart data={logs.filter(l => selectedDeviceMac === 'ALL' || (l.mac || l.device_id) === selectedDeviceMac)} timeframe={timeframe} isDark={resolvedTheme === 'dark'} devices={devices} selectedDeviceMac={selectedDeviceMac} />
             </div>
           </div>
-          {/* ซ่อนถังน้ำตอนปริ้นท์ */}
           <div className="lg:col-span-4 flex flex-col gap-6 print:hidden">
             <WaterTank level={waterInTank} />
           </div>
         </div>
 
-        {/* 🌟 2. ส่วนข้อมูล (ซ่อนแผนที่ ขยายตารางให้เต็มกระดาษ) */}
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 print:block">
-          {/* ซ่อนแผนที่ตอนปริ้นท์ */}
           <div className="xl:col-span-7 print:hidden">
              <DeviceMap devices={devices.filter(d => selectedDeviceMac === 'ALL' || d.mac === selectedDeviceMac)} />
           </div>
@@ -331,9 +311,7 @@ export default function Home() {
                 </div>
              </div>
              
-             {/* หัวข้อตารางตอนปริ้นท์ */}
              <h2 className="hidden print:block text-xl font-bold mb-4 mt-8">2. Raw Data Logs</h2>
-             
              <div className="flex-grow overflow-hidden relative print:overflow-visible">
                 {displayLogs.length === 0 && logTab === 'ALERTS' ? (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
@@ -346,7 +324,6 @@ export default function Home() {
              </div>
           </div>
         </div>
-
       </main>
     </div>
   );
