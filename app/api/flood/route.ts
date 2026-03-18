@@ -4,9 +4,8 @@ import WaterLog from "@/db/models/WaterLog";
 import Device from "@/db/models/Device";
 
 export const dynamic = 'force-dynamic';
-
 const lastAlertTime = new Map<string, number>();
-const ALERT_COOLDOWN = 1 * 60 * 1000; // หน่วงเวลา 1 นาที
+const ALERT_COOLDOWN = 1 * 60 * 1000;
 
 async function sendLineMessage(message: string) {
   const ACCESS_TOKEN = "JSP4AFcQD0fSIwxGBIQXT+W2h/sD3wcdPUaLPu5I4znODmfu9l1qLVMgP328d/CZbBD8vRxfgv0LMwtc5Hn3MnQEovNDRLejZJ/VstvpNgfi98Kv/RXYQUQMbgg4TEbDeii03sBTNE4L9hkwS7tV/wdB04t89/1O/w1cDnyilFU="; 
@@ -26,7 +25,7 @@ export async function POST(request: NextRequest) {
     const payload = await request.json(); 
     await connectDB();
 
-    const currentLevel = Number(payload.level ?? 0);
+    const currentLevel = Number(payload.level ?? 62.0);
     const currentTemp = Number(payload.temperature ?? 0);
     const currentHumid = Number(payload.air_humidity ?? payload.humidity ?? 0);
     const currentSignal = Number(payload.signal ?? 0);
@@ -47,16 +46,15 @@ export async function POST(request: NextRequest) {
       signal: currentSignal
     });
 
-    // 🌟 คำนวณระดับน้ำ
-    let wl = (84.0 - currentLevel) - 5.0;
-    if (currentLevel <= 0.5 || currentLevel > 90) wl = 0;
+    // 🌟 Calibrate 62.0 (ให้เหมือนหน้าแรก)
+    let wl = (62.0 - currentLevel);
+    if (currentLevel <= 0.5 || currentLevel > 75) wl = 0;
     if (wl > 40) wl = 40;
     if (wl < 0) wl = 0;
 
     let lineStatus = "Normal";
     if (device.isActive) {
       let alertStatus = "";
-      // 🔥 ปรับเกณฑ์ LINE: แดง 10, ส้ม 5
       if (wl >= 10.0) alertStatus = "🚨 [อันตราย] ระดับน้ำวิกฤต!";
       else if (wl >= 5.0) alertStatus = "⚠️ [เฝ้าระวัง] ระดับน้ำสูงกว่าเกณฑ์!";
 
@@ -71,7 +69,6 @@ export async function POST(request: NextRequest) {
         }
       }
     }
-
     return NextResponse.json({ success: true, line_status: lineStatus });
   } catch (error: any) { return NextResponse.json({ error: error.message }, { status: 500 }); }
 }
