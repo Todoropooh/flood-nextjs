@@ -55,12 +55,16 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // ✅ สูตรคำนวณระดับน้ำแบบปลอดภัย (แก้เป็น 84.0 ให้ตรงกับ ESP32 แล้ว)
+  // ✅ สูตรคำนวณระดับน้ำแบบปรับแก้เฉพาะหน้าเว็บ (Frontend Calibration)
   const calculateWater = (level: any) => {
     const raw = Number(level ?? 84.0); 
-    let val = 84.0 - raw;              
-    if (raw <= 0.5 || raw > 90) val = 0; // ถ้าระยะเพี้ยนเกินก้นถังไปมากให้ปัดเป็น 0
-    return val < 0 ? 0 : (val > 40 ? 40 : val); // ขยายความสูงสูงสุดเป็น 40 cm
+    
+    // 🌟 หักลบค่าความคลาดเคลื่อนออก 5.0 ซม. เพื่อให้หน้าเว็บตรงกับของจริงมากขึ้น
+    // ถ้าหน้าเว็บยังสูงไป หรือต่ำไป พี่สามารถแก้ตัวเลข 5.0 ตรงนี้ได้เลยครับ
+    let val = (84.0 - raw) - 5.0; 
+    
+    if (raw <= 0.5 || raw > 90) val = 0; 
+    return val < 0 ? 0 : (val > 40 ? 40 : val); 
   };
 
   // ✅ คำนวณค่าเฉลี่ย (Safety Guard)
@@ -118,7 +122,7 @@ export default function Home() {
     humid: getTrend(currentHumid, 'humid')
   };
 
-  // ✅ เกณฑ์การเปลี่ยนสี (อัปเดตให้สอดคล้องกับ ESP32: >=25 แดง, >=15 ส้ม, <15 เขียว)
+  // ✅ เกณฑ์การเปลี่ยนสี (>= 25 แดง, >= 15 ส้ม, < 15 เขียว)
   const status = waterInTank >= 25 ? { label: "CRITICAL", color: "text-red-500", bg: "bg-red-500", icon: <ShieldAlert/>, border: "border-red-500/20" }
                : waterInTank >= 15 ? { label: "WARNING", color: "text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle/>, border: "border-orange-500/20" }
                : { label: "STABLE", color: "text-emerald-500", bg: "bg-emerald-500", icon: <CheckCircle2/>, border: "border-emerald-500/20" };
