@@ -2,6 +2,7 @@
 
 @variant dark (&:where(.dark, .dark *));
 
+/* ===================== THEME ===================== */
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
@@ -19,6 +20,7 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* ===================== BASE ===================== */
 body {
   background-color: var(--background);
   color: var(--foreground);
@@ -26,12 +28,126 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Scrollbar Style */
-::-webkit-scrollbar { width: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
-.dark ::-webkit-scrollbar-thumb { background: #1e293b; }
+/* ===================== SCROLLBAR ===================== */
+::-webkit-scrollbar {
+  width: 6px;
+}
 
-/* Animations (Keep your original code) */
-@keyframes wave { 0% { transform: scaleY(1); } 50% { transform: scaleY(0.6); } 100% { transform: scaleY(1); } }
-.animate-wave { animation: wave 5s ease-in-out infinite; }
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border-radius: 10px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #1e293b;
+}
+
+/* ===================== ORIGINAL WAVE (KEEP) ===================== */
+@keyframes wave {
+  0% { transform: scaleY(1); }
+  50% { transform: scaleY(0.6); }
+  100% { transform: scaleY(1); }
+}
+
+/* ===================== NEW WAVE (REAL FLOW) ===================== */
+@keyframes waveMove {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-wave {
+  animation: waveMove 2.5s linear infinite;
+}
+
+/* ===================== BUBBLE FLOAT ===================== */
+@keyframes floatUp {
+  0% {
+    transform: translateY(0);
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-30px);
+    opacity: 0;
+  }
+}
+
+.animate-float {
+  animation: floatUp 3s ease-in-out infinite;
+}
+
+/* ===================== SOFT FLOAT (ICON/UI) ===================== */
+@keyframes floatSoft {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
+  100% { transform: translateY(0px); }
+}
+
+.animate-soft-float {
+  animation: floatSoft 3s ease-in-out infinite;
+}
+
+/* ===================== PULSE GLOW ===================== */
+@keyframes pulseGlow {
+  0% {
+    box-shadow: 0 0 0px rgba(59,130,246,0.0);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(59,130,246,0.4);
+  }
+  100% {
+    box-shadow: 0 0 0px rgba(59,130,246,0.0);
+  }
+}
+
+.animate-glow {
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+/* ===================== FADE IN ===================== */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.6s ease forwards;
+}
+
+/* ===================== CARD HOVER ===================== */
+.card-hover {
+  transition: all 0.25s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+}
+
+/* ===================== GLASS EFFECT ===================== */
+.glass {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(14px);
+}
+
+.dark .glass {
+  background: rgba(15, 23, 42, 0.6);
+}
+
+/* ===================== IOS STYLE SAFE AREA ===================== */
+.safe-area {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
