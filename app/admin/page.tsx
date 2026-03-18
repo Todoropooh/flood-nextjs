@@ -7,7 +7,7 @@ import { useTheme } from 'next-themes';
 import { 
   ArrowLeft, Trash2, XCircle, Search, Cpu, 
   Plus, Edit2, Users, ShieldCheck, Image as ImageIcon, 
-  Loader2, FileText, Calendar, Sun, Moon, Settings 
+  Loader2, FileText, Calendar, Sun, Moon, Settings, UserCog
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -97,20 +97,15 @@ export default function AdminPage() {
         });
         doc.save(`User_Report_${new Date().getTime()}.pdf`);
       } else {
-        // 🌟 1. ดึงข้อมูลให้เสร็จก่อน
         const res = await fetch(`/api/flood?timeframe=month`);
         let logs = [];
         if (res.ok) logs = await res.json();
         const cutoffTime = Date.now() - (exportDays * 24 * 60 * 60 * 1000);
         const filteredLogs = logs.filter((l: any) => new Date(l.createdAt || l.timestamp).getTime() > cutoffTime);
 
-        // 🌟 เซ็ต State ให้ Component กราฟที่ซ่อนอยู่นำไปใช้วาด
         setExportLogs(filteredLogs);
-
-        // 🌟 2. *** สำคัญมาก *** หน่วงเวลา 1.5 วินาที เพื่อให้ React วาดกราฟให้เสร็จ 100% ก่อนถ่ายรูป
         await new Promise(resolve => setTimeout(resolve, 1500));
 
-        // 🌟 3. แอบถ่ายรูปกราฟด้วย html-to-image
         const chartElem = document.getElementById('pdf-chart-container');
         let chartImgData = null;
         let canvasWidth = 800;
@@ -122,14 +117,13 @@ export default function AdminPage() {
             canvasHeight = chartElem.offsetHeight || 400;
             chartImgData = await htmlToImage.toPng(chartElem, { 
               backgroundColor: '#ffffff',
-              pixelRatio: 2 // ภาพชัด 2 เท่า
+              pixelRatio: 2 
             });
           } catch (err) {
             console.error("ถ่ายรูปกราฟไม่สำเร็จ: ", err);
           }
         }
 
-        // 🌟 4. วาดหัวกระดาษ PDF
         doc.setFillColor(41, 128, 185); 
         doc.rect(0, 0, 210, 35, 'F');
         doc.setTextColor(255, 255, 255);
@@ -142,27 +136,22 @@ export default function AdminPage() {
         doc.text(`Total Records: ${filteredLogs.length} logs`, 14, 31);
 
         let currentY = 45;
-
-        // 🌟 5. แปะรูปกราฟลงใน PDF (ถ้าถ่ายรูปสำเร็จ)
         if (chartImgData) {
-          const imgWidth = 182; // ความกว้างเต็มหน้ากระดาษ (เว้นขอบ 14mm)
+          const imgWidth = 182; 
           const imgHeight = (canvasHeight * imgWidth) / canvasWidth; 
           doc.addImage(chartImgData, 'PNG', 14, currentY, imgWidth, imgHeight);
           currentY += imgHeight + 10; 
         }
 
-        // 🌟 6. เตรียมข้อมูลลงตาราง (ใช้ filteredLogs ที่ดึงมาสดๆ ร้อนๆ)
         const tableData = filteredLogs.map((l: any) => {
           const dName = devices.find(d => d.mac === l.mac || d.device_id === l.device_id)?.name || l.mac || 'Unknown';
-          
-          const sensorDist = Number(l.level) || 95;
-          let waterLevel = 95 - sensorDist;
-          if (sensorDist <= 0.5 || sensorDist > 80) waterLevel = 0;
+          const sensorDist = Number(l.level) || 84;
+          let waterLevel = (84.0 - sensorDist) - 5.0;
+          if (sensorDist <= 0.5 || sensorDist > 90) waterLevel = 0;
           if (waterLevel < 0) waterLevel = 0;
-          if (waterLevel > 20) waterLevel = 20;
+          if (waterLevel > 40) waterLevel = 40;
 
           const dateStr = new Date(l.createdAt || l.timestamp).toLocaleString('th-TH');
-
           return [
             dateStr,
             dName,
@@ -173,7 +162,6 @@ export default function AdminPage() {
           ];
         });
 
-        // 🌟 7. สร้างตารางแบบ Auto-Paging
         autoTable(doc, {
           startY: currentY,
           head: [['Date/Time', 'Node Name', 'Water (cm)', 'Temp (C)', 'Humid (%)', 'SIM Signal']],
@@ -216,20 +204,8 @@ export default function AdminPage() {
     setIsSaving(true);
     const method = currentEditingId ? 'PUT' : 'POST';
     const bodyData = currentEditingId ? { ...submittedData, _id: currentEditingId } : submittedData;
-    
-    const res = await fetch('/api/devices', { 
-      method, 
-      headers: { 'Content-Type': 'application/json' }, 
-      body: JSON.stringify(bodyData) 
-    });
-    
-    if (res.ok) { 
-      await fetchData(); 
-      closeModal(); 
-    } else { 
-      alert("Error occurred while saving device"); 
-      setIsSaving(false); 
-    }
+    const res = await fetch('/api/devices', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bodyData) });
+    if (res.ok) { await fetchData(); closeModal(); } else { alert("Error"); setIsSaving(false); }
   };
 
   const handleUserSubmit = async (e: any) => {
@@ -247,9 +223,7 @@ export default function AdminPage() {
 
   const handleToggleSettings = async (type: 'system' | 'buzzer') => {
     const newValue = type === 'system' ? !systemSettings.systemOn : !systemSettings.buzzerOn;
-    
     setSystemSettings(prev => ({ ...prev, [type === 'system' ? 'systemOn' : 'buzzerOn']: newValue }));
-
     await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -311,9 +285,7 @@ export default function AdminPage() {
                   <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white/50 dark:bg-black/30 border border-white/50 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500/50" />
                 </div>
                 <button onClick={() => { setIsExportModalOpen(true); setTimeout(()=>setModalAnim(true),10); }} className="p-2 bg-white/50 dark:bg-white/10 text-emerald-600 border border-white/50 rounded-xl shadow-sm"><FileText size={16} /></button>
-                
                 <button onClick={() => { setIsSettingsModalOpen(true); setTimeout(()=>setModalAnim(true),10); }} className="p-2 bg-white/50 dark:bg-white/10 text-slate-600 dark:text-slate-300 border border-white/50 rounded-xl shadow-sm hover:text-blue-500"><Settings size={16} /></button>
-                
                 <button onClick={() => { if(activeTab==='nodes') {setEditingId(null); setIsAddModalOpen(true);} else {setEditingId(null); setUserFormData(defaultUser); setIsUserModalOpen(true);} setTimeout(()=>setModalAnim(true),10); }} className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-500 transition-all shadow-md min-w-[36px] flex items-center justify-center"><Plus size={18}/></button>
               </div>
             </div>
@@ -412,6 +384,24 @@ export default function AdminPage() {
               <input required type="text" placeholder="Last Name" value={userFormData.lastname} onChange={e => setUserFormData({...userFormData, lastname: e.target.value})} className="w-full p-3 bg-white/50 dark:bg-black/30 border rounded-xl outline-none text-sm" />
               <input required type="text" placeholder="Username" value={userFormData.username} onChange={e => setUserFormData({...userFormData, username: e.target.value})} className="w-full p-3 bg-white/50 dark:bg-black/30 border rounded-xl outline-none text-sm" />
               <input type="password" placeholder={editingId ? "New Password (Leave blank)" : "Password"} value={userFormData.password} onChange={e => setUserFormData({...userFormData, password: e.target.value})} className="w-full p-3 bg-white/50 dark:bg-black/30 border rounded-xl outline-none text-sm" />
+              
+              {/* 🎯 [เพิ่มใหม่] ส่วนกำหนด ROLE (Roll) */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-1">System Role</label>
+                <div className="relative">
+                  <select 
+                    value={userFormData.role} 
+                    onChange={e => setUserFormData({...userFormData, role: e.target.value})}
+                    className="w-full p-3 bg-white/50 dark:bg-black/30 border rounded-xl outline-none text-sm appearance-none font-bold"
+                  >
+                    <option value="user">User (Standard)</option>
+                    <option value="admin">Admin (Full Control)</option>
+                    <option value="viewer">Viewer (Read Only)</option>
+                  </select>
+                  <UserCog size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                </div>
+              </div>
+
               <button disabled={isSaving} className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl shadow-md hover:bg-blue-500 flex justify-center">
                 {isSaving ? <Loader2 className="animate-spin" size={20} /> : 'Save User'}
               </button>
@@ -441,66 +431,46 @@ export default function AdminPage() {
       {isSettingsModalOpen && (
         <div className={`fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300 ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
           <div className={`bg-white dark:bg-[#1e2330] rounded-3xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800 transform transition-all duration-300 ${modalAnim ? 'scale-100' : 'scale-95'} overflow-hidden p-6`}>
-            
             <div className="flex justify-between items-center mb-6">
               <h3 className="font-bold text-lg">Device Management</h3>
               <button onClick={closeModal} className="text-slate-400 hover:text-red-500"><XCircle size={20}/></button>
             </div>
-            
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <div>
                   <h4 className="font-bold text-sm">ระบบการทำงาน</h4>
                   <p className="text-xs text-slate-500 mt-1">เปิด-ปิด การรับส่งข้อมูลของอุปกรณ์</p>
                 </div>
-                <button 
-                  onClick={() => handleToggleSettings('system')}
-                  className={`w-12 h-6 rounded-full transition-colors relative ${systemSettings.systemOn ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'}`}
-                >
+                <button onClick={() => handleToggleSettings('system')} className={`w-12 h-6 rounded-full transition-colors relative ${systemSettings.systemOn ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'}`}>
                   <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${systemSettings.systemOn ? 'translate-x-7' : 'translate-x-1'}`} />
                 </button>
               </div>
-
               <div className="flex justify-between items-center">
                 <div>
                   <h4 className="font-bold text-sm">เสียงแจ้งเตือน (Buzzer)</h4>
                   <p className="text-xs text-slate-500 mt-1">เปิด-ปิด เสียงร้องเตือนที่ตัวอุปกรณ์</p>
                 </div>
-                <button 
-                  onClick={() => handleToggleSettings('buzzer')}
-                  className={`w-12 h-6 rounded-full transition-colors relative ${systemSettings.buzzerOn ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'}`}
-                >
+                <button onClick={() => handleToggleSettings('buzzer')} className={`w-12 h-6 rounded-full transition-colors relative ${systemSettings.buzzerOn ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'}`}>
                   <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${systemSettings.buzzerOn ? 'translate-x-7' : 'translate-x-1'}`} />
                 </button>
               </div>
             </div>
-
-            <button onClick={closeModal} className="w-full mt-8 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
-              ปิดหน้าต่าง
-            </button>
+            <button onClick={closeModal} className="w-full mt-8 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">ปิดหน้าต่าง</button>
           </div>
         </div>
       )}
 
-      {/* 🌟 ฐานลับนินจา: ซ่อนกราฟไว้หลังฉาก เพื่อรอดึงข้อมูลให้เสร็จแล้วถ่ายรูป */}
+      {/* 🌟 ฐานลับนินจา: ซ่อนกราฟไว้หลังฉาก */}
       <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '800px', height: '400px', zIndex: -50 }}>
         <div id="pdf-chart-container" style={{ width: '100%', height: '100%', backgroundColor: 'white', padding: '20px', borderRadius: '10px' }}>
            <h2 style={{ textAlign: 'center', color: '#1e293b', marginBottom: '15px', fontFamily: 'sans-serif', fontSize: '18px', fontWeight: 'bold' }}>
              Water Level Trend (Last {exportDays} Days)
            </h2>
            <div style={{ width: '100%', height: '320px' }}>
-             {/* 🌟 วาดกราฟจาก exportLogs ที่ดึงมาสดๆ ร้อนๆ */}
-             <WaterLevelChart 
-               data={exportLogs} 
-               timeframe={exportDays === 1 ? 'day' : exportDays === 7 ? 'week' : 'month'} 
-               isDark={false} 
-               devices={devices} 
-               selectedDeviceMac="ALL" 
-             />
+             <WaterLevelChart data={exportLogs} timeframe={exportDays === 1 ? 'day' : exportDays === 7 ? 'week' : 'month'} isDark={false} devices={devices} selectedDeviceMac="ALL" />
            </div>
         </div>
       </div>
-
     </main>
   );
 }

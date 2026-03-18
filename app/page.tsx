@@ -4,19 +4,20 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useTheme } from 'next-themes';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
+
 import WaterLevelChart from '@/components/WaterLevelChart';
 import WaterTank from '@/components/WaterTank'; 
 import RecentLogs from '@/components/RecentLogs'; 
+
 import { 
   Waves, Sun, Activity, Thermometer, Droplets, ChevronDown, Settings, 
   Radio, Server, CheckCircle2, ShieldAlert, AlertTriangle, TrendingUp, 
-  TrendingDown, Minus, Database, Map as MapIcon, Clock, Signal, 
-  FileText, History, ActivitySquare, LayoutDashboard, Zap
+  TrendingDown, Database, Clock, Signal, FileText, ActivitySquare, Zap
 } from 'lucide-react';
 
 const DeviceMap = dynamic(() => import('@/components/DeviceMap'), { 
   ssr: false,
-  loading: () => <div className="h-[400px] w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-[2.5rem]" />
+  loading: () => <div className="h-[450px] w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-[2.5rem]" />
 });
 
 export default function Home() {
@@ -64,7 +65,7 @@ export default function Home() {
     return filtered.length > 0 ? calculateWater(filtered[filtered.length - 1].level) : 0;
   }, [logs, selectedDeviceMac, calculateWater]);
 
-  // 🔥 เกณฑ์ใหม่: แดง 10, ส้ม 5
+  // 🔥 เกณฑ์: แดง 10, ส้ม 5
   const status = waterInTank >= 10 ? { label: "CRITICAL", color: "text-red-500", bg: "bg-red-500", icon: <ShieldAlert size={24}/>, border: "border-red-500", glow: "shadow-red-500/20" }
                : waterInTank >= 5 ? { label: "WARNING", color: "text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle size={24}/>, border: "border-orange-500", glow: "shadow-orange-500/20" }
                : { label: "STABLE", color: "text-emerald-500", bg: "bg-emerald-500", icon: <CheckCircle2 size={24}/>, border: "border-emerald-500", glow: "shadow-emerald-500/20" };
@@ -99,12 +100,33 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#F1F5F9] dark:bg-[#020617] transition-all duration-500 font-sans pb-10">
+      
+      {/* --- Header (ตัวเลือกอุปกรณ์กลับมาแล้ว) --- */}
       <header className="sticky top-0 z-[100] bg-white/70 dark:bg-slate-950/70 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 px-8 py-4 print:hidden">
         <div className="max-w-[1600px] mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
             <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl text-white shadow-lg shadow-blue-500/30"><Waves size={24}/></div>
-            <h1 className="text-xl font-black tracking-tight text-slate-800 dark:text-white uppercase">Flood Monitor Enterprise</h1>
+            
+            {/* อุปกรณ์ Selector */}
+            <div className="relative">
+              <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="flex items-center gap-3 bg-slate-100 dark:bg-slate-900 px-5 py-2.5 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-slate-800 transition-all border border-slate-200 dark:border-slate-800">
+                <Server size={16} className="text-blue-500" />
+                {selectedDeviceMac === 'ALL' ? 'System Overview' : devices.find(d => d.mac === selectedDeviceMac)?.name || 'Device'}
+                <ChevronDown size={16} className={`transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {isDropdownOpen && (
+                <div className="absolute top-full left-0 mt-3 w-64 bg-white dark:bg-slate-900 shadow-2xl rounded-2xl border border-slate-200 dark:border-slate-800 p-2 animate-in fade-in slide-in-from-top-2">
+                  <button onClick={() => { setSelectedDeviceMac('ALL'); setIsDropdownOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl text-xs font-bold transition-all uppercase">🌍 All Devices</button>
+                  {devices.map((d: any) => (
+                    <button key={d.mac} onClick={() => { setSelectedDeviceMac(d.mac); setIsDropdownOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-xs font-bold transition-all uppercase">
+                      <Radio size={14} className="text-slate-400" /> {d.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
+
           <div className="flex items-center gap-3">
              <button onClick={() => window.print()} className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-blue-500 transition-all"><FileText size={20}/></button>
              <button onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')} className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-blue-500 transition-all"><Sun size={20}/></button>
@@ -114,20 +136,21 @@ export default function Home() {
       </header>
 
       <main className="max-w-[1600px] mx-auto p-6 space-y-8">
+        
+        {/* --- Hero Section --- */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className={`lg:col-span-4 p-8 rounded-[2.5rem] bg-white dark:bg-slate-900 border-2 ${status.border} ${status.glow} shadow-2xl flex flex-col justify-between relative overflow-hidden group`}>
              <div className="relative z-10">
-                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">System Health</span>
+                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Live Status</span>
                 <div className={`text-5xl font-black mt-2 ${status.color} tracking-tighter`}>{status.label}</div>
              </div>
              <div className="mt-8 relative z-10 flex items-end justify-between">
                 <div>
-                  <div className="text-sm font-bold text-slate-500 uppercase">Live Water Level</div>
+                  <div className="text-sm font-bold text-slate-500 uppercase">Current Water</div>
                   <div className="text-6xl font-black text-slate-800 dark:text-white tabular-nums">{waterInTank.toFixed(1)}<span className="text-xl ml-2 text-slate-400">cm</span></div>
                 </div>
-                <div className={`p-4 rounded-3xl ${status.bg} text-white shadow-xl animate-pulse`}>{status.icon}</div>
+                <div className={`p-4 rounded-3xl ${status.bg} text-white shadow-xl animate-bounce`}>{status.icon}</div>
              </div>
-             <div className={`absolute -right-10 -bottom-10 opacity-5 ${status.color} group-hover:scale-110 transition-transform duration-700`}><ShieldAlert size={250} /></div>
           </div>
 
           <div className="lg:col-span-8 grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -138,17 +161,18 @@ export default function Home() {
           </div>
         </div>
 
+        {/* --- Chart & Tank --- */}
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-          <div className="xl:col-span-8 bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl min-h-[500px]">
+          <div className="xl:col-span-8 bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl">
              <div className="flex justify-between items-center mb-8">
-                <h3 className="font-black text-slate-700 dark:text-white uppercase tracking-wider flex items-center gap-3"><Activity className="text-blue-500"/> Trend Analysis</h3>
+                <h3 className="font-black text-slate-700 dark:text-white uppercase tracking-wider flex items-center gap-3"><Activity className="text-blue-500"/> Analytics</h3>
                 <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
                   {['day', 'week', 'month'].map(tf => (
                     <button key={tf} onClick={() => setTimeframe(tf)} className={`px-5 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${timeframe === tf ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-md' : 'text-slate-500'}`}>{tf}</button>
                   ))}
                 </div>
              </div>
-             <div className="h-[380px]">
+             <div className="h-[400px]">
                 <WaterLevelChart data={logs} isDark={resolvedTheme === 'dark'} devices={devices} timeframe={timeframe} selectedDeviceMac={selectedDeviceMac} />
              </div>
           </div>
@@ -156,6 +180,26 @@ export default function Home() {
              <WaterTank level={waterInTank} />
           </div>
         </div>
+
+        {/* --- Map & History Logs (แมพและล็อคกลับมาแล้ว) --- */}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+           <div className="xl:col-span-7 rounded-[2.5rem] overflow-hidden border border-slate-200 dark:border-slate-800 shadow-xl bg-white dark:bg-slate-900 p-4">
+              <div className="h-[500px] rounded-[2rem] overflow-hidden">
+                <DeviceMap devices={devices.filter(d => selectedDeviceMac === 'ALL' || d.mac === selectedDeviceMac)} />
+              </div>
+           </div>
+           
+           <div className="xl:col-span-5 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden flex flex-col h-[532px]">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/50">
+                 <h3 className="font-black uppercase text-slate-700 dark:text-white tracking-widest text-xs flex items-center gap-2"><Database size={16} className="text-indigo-500"/> Records</h3>
+                 <span className="text-[10px] font-bold text-slate-400">Latest Sync: {insights.lastUpdate}</span>
+              </div>
+              <div className="flex-grow overflow-auto">
+                 <RecentLogs logs={selectedDeviceMac === 'ALL' ? logs : logs.filter(l => (l.mac || l.device_id) === selectedDeviceMac)} />
+              </div>
+           </div>
+        </div>
+
       </main>
     </div>
   );
@@ -169,7 +213,7 @@ function StatCard({ icon, label, value, unit, color }: any) {
     indigo: "text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10"
   };
   return (
-    <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-md group">
+    <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-md">
       <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 ${colors[color]}`}>{icon}</div>
       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</div>
       <div className="text-2xl font-black text-slate-800 dark:text-white mt-1">{value} <span className="text-[10px] text-slate-400">{unit}</span></div>
