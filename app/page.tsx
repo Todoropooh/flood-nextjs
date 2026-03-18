@@ -55,11 +55,11 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // ✅ สูตรคำนวณระดับน้ำแบบปลอดภัย
+  // ✅ สูตรคำนวณระดับน้ำแบบปลอดภัย (แก้เป็น 61.4 ให้ตรงกับ ESP32 แล้ว)
   const calculateWater = (level: any) => {
-    const raw = Number(level ?? 95);
-    let val = 95 - raw;
-    if (raw <= 0.5 || raw > 85) val = 0;
+    const raw = Number(level ?? 61.4); 
+    let val = 61.4 - raw;              
+    if (raw <= 0.5 || raw > 65) val = 0; // ถ้าระยะเพี้ยนเกินก้นถังไปมากให้ปัดเป็น 0
     return val < 0 ? 0 : (val > 20 ? 20 : val);
   };
 
