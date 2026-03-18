@@ -5,6 +5,10 @@ import Device from "@/db/models/Device";
 
 export const dynamic = 'force-dynamic';
 
+// 🌟 1. เพิ่มตัวแปรกัน Spam LINE (ป้องกันไม่ให้ข้อความเด้งรัวๆ ทุก 5 วินาที)
+const lastAlertTime = new Map<string, number>();
+const ALERT_COOLDOWN = 3 * 60 * 1000; // หน่วงเวลาแจ้งเตือนซ้ำ 3 นาที
+
 // --- ฟังก์ชันส่ง LINE ---
 async function sendLineMessage(message: string) {
   const ACCESS_TOKEN = "JSP4AFcQD0fSIwxGBIQXT+W2h/sD3wcdPUaLPu5I4znODmfu9l1qLVMgP328d/CZbBD8vRxfgv0LMwtc5Hn3MnQEovNDRLejZJ/VstvpNgfi98Kv/RXYQUQMbgg4TEbDeii03sBTNE4L9hkwS7tV/wdB04t89/1O/w1cDnyilFU="; 
@@ -24,7 +28,7 @@ export async function POST(request: NextRequest) {
     const payload = await request.json(); 
     await connectDB();
 
-    const currentLevel = Number(payload.level ?? 0);
+    const currentLevel = Number(payload.level ?? 0); // ได้ค่าระยะเซ็นเซอร์ดิบมา
     const currentTemp = Number(payload.temperature ?? 0);
     const currentHumid = Number(payload.air_humidity ?? payload.humidity ?? 0);
 
@@ -44,20 +48,35 @@ export async function POST(request: NextRequest) {
       air_humidity: currentHumid
     });
 
-    // ✅ NEW ALERT LOGIC: แจ้งเตือนตามช่วงระยะน้ำ
+    // ✅ 2. แปลงระยะเซ็นเซอร์ให้เป็นระดับน้ำจริง (สูตรเดียวกับหน้าเว็บ)
+    let wl = (84.0 - currentLevel) - 5.0;
+    if (currentLevel <= 0.5 || currentLevel > 90) wl = 0;
+    if (wl > 40) wl = 40;
+    if (wl < 0) wl = 0;
+
+    // ✅ 3. NEW ALERT LOGIC: แจ้งเตือนตามระดับน้ำ (แดง >= 20, ส้ม >= 10)
     if (device.isActive) {
       let alertStatus = "";
       
-      if (currentLevel <= 54) {
-        alertStatus = "🚨 [วิกฤต] น้ำเต็มถังแล้ว!";
-      } else if (currentLevel <= 61) {
-        alertStatus = "⚠️ [เตือน] น้ำเหลือครึ่งถัง";
+      if (wl >= 20.0) {
+        alertStatus = "🚨 [อันตราย] ระดับน้ำวิกฤต!";
+      } else if (wl >= 10.0) {
+        alertStatus = "⚠️ [เฝ้าระวัง] ระดับน้ำสูงกว่าเกณฑ์!";
       }
 
-      // ส่ง LINE เฉพาะเมื่อเข้าเงื่อนไขเตือน (น้อยกว่าหรือเท่ากับ 61)
-      if (alertStatus !== "") {
-        const alertMsg = `${alertStatus}\n📍 ${device.name}\n🌊 ระยะน้ำ: ${currentLevel.toFixed(1)} cm\n🌡️ ${currentTemp.toFixed(1)}°C | 💧 ${currentHumid.toFixed(1)}%`;
+      // ตรวจสอบระบบ Cooldown เพื่อกัน Spam
+      const now = Date.now();
+      const lastAlert = lastAlertTime.get(payload.mac) || 0;
+
+      // ถ้าเข้าเกณฑ์แจ้งเตือน และ ผ่านไปแล้ว 3 นาทีจากการเตือนครั้งล่าสุด
+      if (alertStatus !== "" && (now - lastAlert > ALERT_COOLDOWN)) {
+        // อัปเดตข้อความให้โชว์เป็น "ระดับน้ำ" (ซม.) แทนระยะเซ็นเซอร์
+        const alertMsg = `${alertStatus}\n📍 ${device.name}\n🌊 ระดับน้ำ: ${wl.toFixed(1)} cm\n🌡️ ${currentTemp.toFixed(1)}°C | 💧 ${currentHumid.toFixed(1)}%`;
+        
         await sendLineMessage(alertMsg);
+        
+        // บันทึกเวลาที่เพิ่งส่งไป
+        lastAlertTime.set(payload.mac, now);
       }
     }
 

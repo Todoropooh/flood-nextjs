@@ -21,13 +21,13 @@ const DeviceMap = dynamic(() => import('@/components/DeviceMap'), {
   loading: () => <div className="h-[400px] w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-2xl" />
 });
 
-// 🌟 Component สร้างแท่งสัญญาณมือถือ 4 ขีด
+// Component สร้างแท่งสัญญาณมือถือ 4 ขีด
 function SignalBars({ csq }: { csq: number }) {
   let bars = 0;
-  if (csq > 20 && csq !== 99) bars = 4;      // Excellent
-  else if (csq > 14) bars = 3;               // Good
-  else if (csq > 9) bars = 2;                // Fair
-  else if (csq > 0 && csq !== 99) bars = 1;  // Poor
+  if (csq > 20 && csq !== 99) bars = 4;      
+  else if (csq > 14) bars = 3;               
+  else if (csq > 9) bars = 2;                
+  else if (csq > 0 && csq !== 99) bars = 1;  
 
   return (
     <div className="flex items-end gap-[3px] h-5" title={`CSQ: ${csq}`}>
@@ -50,9 +50,22 @@ export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   const [timeframe, setTimeframe] = useState('day');
   const [logTab, setLogTab] = useState<'ALL' | 'ALERTS'>('ALL');
+  
+  // 🌟 State สำหรับ Web Push Notification
+  const [lastNotifiedLogId, setLastNotifiedLogId] = useState<string | null>(null);
+  
   const { setTheme, resolvedTheme } = useTheme();
 
   useEffect(() => { setIsMounted(true); }, []);
+
+  // 🌟 ขออนุญาตแจ้งเตือนบนเบราว์เซอร์
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+    }
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -76,13 +89,40 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // ✅ สูตรคำนวณระดับน้ำ 
   const calculateWater = useCallback((level: any) => {
     const raw = Number(level ?? 84.0); 
     let val = (84.0 - raw) - 5.0; 
     if (raw <= 0.5 || raw > 90) val = 0; 
     return val < 0 ? 0 : (val > 40 ? 40 : val); 
   }, []);
+
+  // 🌟 Logic สั่ง Web Push Notification แจ้งเตือนหน้าจอ
+  useEffect(() => {
+    if (logs.length > 0) {
+      const activeLogs = selectedDeviceMac === 'ALL' 
+        ? logs 
+        : logs.filter(l => (l.mac || l.device_id) === selectedDeviceMac);
+        
+      if (activeLogs.length > 0) {
+        const latestLog = activeLogs[activeLogs.length - 1];
+        const wl = calculateWater(latestLog.level);
+
+        if (wl >= 10.0 && latestLog._id !== lastNotifiedLogId) {
+          setLastNotifiedLogId(latestLog._id); 
+
+          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+            const alertTitle = wl >= 20.0 ? '🚨 อันตรายระดับน้ำวิกฤต!' : '⚠️ เฝ้าระวังระดับน้ำ!';
+            const timeStr = new Date(latestLog.timestamp || latestLog.createdAt || Date.now()).toLocaleTimeString('th-TH');
+            
+            new Notification(alertTitle, {
+              body: `ระดับน้ำปัจจุบัน: ${wl.toFixed(1)} cm\nเวลา: ${timeStr}`,
+              icon: '/favicon.ico', 
+            });
+          }
+        }
+      }
+    }
+  }, [logs, selectedDeviceMac, lastNotifiedLogId, calculateWater]);
 
   const getMetrics = () => {
     if (!logs.length || !devices.length) return { water: 0, temp: 0, humid: 0 };
@@ -126,12 +166,10 @@ export default function Home() {
 
   const trends = { water: getTrend(waterInTank, 'level'), temp: getTrend(currentTemp, 'temp'), humid: getTrend(currentHumid, 'humid') };
 
-  // 🌟 อัปเดตเกณฑ์แจ้งเตือน (แดง >= 20, ส้ม >= 10)
   const status = waterInTank >= 20 ? { label: "CRITICAL", color: "text-red-500", bg: "bg-red-500", icon: <ShieldAlert size={20}/>, border: "border-red-500/30" }
                : waterInTank >= 10 ? { label: "WARNING", color: "text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle size={20}/>, border: "border-orange-500/30" }
                : { label: "STABLE", color: "text-emerald-500", bg: "bg-emerald-500", icon: <CheckCircle2 size={20}/>, border: "border-emerald-500/30" };
 
-  // 🌟 คำนวณข้อมูลสรุป (Insights) และ Rate of Change
   const insights = useMemo(() => {
     const filteredLogs = selectedDeviceMac === 'ALL' ? logs : logs.filter(l => (l.mac || l.device_id) === selectedDeviceMac);
     if (!filteredLogs.length) return { maxWater: 0, avgSignal: 0, total: 0, lastUpdate: 'N/A', rateOfChange: '0.0' };
@@ -160,7 +198,6 @@ export default function Home() {
     return { maxWater: maxW, avgSignal: avgSig, total: filteredLogs.length, lastUpdate: updateTime, rateOfChange: rateStr };
   }, [logs, selectedDeviceMac, calculateWater]);
 
-  // 🌟 ฟิลเตอร์ Log สำหรับตารางแยกตามแท็บ
   const displayLogs = useMemo(() => {
     let l = logs.filter(l => selectedDeviceMac === 'ALL' || (l.mac || l.device_id) === selectedDeviceMac);
     if (logTab === 'ALERTS') {
@@ -172,7 +209,7 @@ export default function Home() {
   if (!isMounted) return null;
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#020617] transition-colors duration-500 pb-10 font-sans print:bg-white">
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#020617] transition-colors duration-500 pb-10 font-sans print:bg-white print:text-black">
       
       <header className="sticky top-0 z-[100] bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200/50 dark:border-slate-800/50 px-6 py-3 shadow-sm print:hidden">
         <div className="max-w-[1600px] mx-auto flex justify-between items-center">
@@ -205,7 +242,7 @@ export default function Home() {
             <button 
               onClick={() => window.print()} 
               className="flex items-center gap-2 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg"
-              title="Save Dashboard as PDF"
+              title="Save Data & Chart as PDF"
             >
               <FileText size={16} />
               <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Export PDF</span>
@@ -217,15 +254,18 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto p-4 sm:p-6 space-y-6 print:p-0 print:space-y-4">
+      <main className="max-w-[1600px] mx-auto p-4 sm:p-6 space-y-6 print:p-0 print:m-0 print:space-y-4">
         
-        <div className="hidden print:block mb-4 border-b pb-4">
-          <h1 className="text-2xl font-black text-slate-800">Flood Monitoring System Report</h1>
-          <p className="text-sm text-slate-500">Report generated on: {new Date().toLocaleString('th-TH')}</p>
-          <p className="text-sm text-slate-500">Target Node: {selectedDeviceMac === 'ALL' ? 'System Average' : devices.find(d => d.mac === selectedDeviceMac)?.name}</p>
+        {/* หัวกระดาษที่จะโชว์เฉพาะตอนเซฟเป็น PDF */}
+        <div className="hidden print:block mb-6 border-b pb-4">
+          <h1 className="text-3xl font-black text-slate-800 mb-2">Flood Data Report</h1>
+          <p className="text-sm text-slate-600"><strong>Generated on:</strong> {new Date().toLocaleString('th-TH')}</p>
+          <p className="text-sm text-slate-600"><strong>Target Node:</strong> {selectedDeviceMac === 'ALL' ? 'System Average' : devices.find(d => d.mac === selectedDeviceMac)?.name}</p>
+          <p className="text-sm text-slate-600"><strong>Timeframe:</strong> {timeframe.toUpperCase()}</p>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* 🌟 ซ่อนการ์ดหลัก และ Insight ตอนปริ้นท์ (ตามที่คุณต้องการ Export แค่ Data & Chart) */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 print:hidden">
           <MetricCard label="Water Level" val={waterInTank.toFixed(1)} unit="CM" icon={<Waves size={18}/>} color={status.color} trend={trends.water} />
           <MetricCard label="Temperature" val={currentTemp.toFixed(1)} unit="°C" icon={<Thermometer size={18}/>} color="text-orange-500" trend={trends.temp} />
           <MetricCard label="Air Humidity" val={currentHumid.toFixed(0)} unit="%" icon={<Droplets size={18}/>} color="text-cyan-500" trend={trends.humid} />
@@ -237,87 +277,64 @@ export default function Home() {
              <div className="relative z-10">
                <div className={`text-xl font-black ${status.color} tracking-wider`}>{status.label}</div>
              </div>
-             <div className={`absolute -bottom-4 -right-4 opacity-5 ${status.color}`}><ShieldAlert size={100} /></div>
           </div>
         </div>
 
-        {/* 🌟 Data Insights ย้ายมาไว้ใต้ส่วนบนสุด */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-           <InsightCard 
-             icon={<ActivitySquare size={16}/>} 
-             title="Rate of Change" 
-             value={insights.rateOfChange} 
-             unit="CM / HR" 
-             color={Number(insights.rateOfChange) > 0 ? "text-orange-500" : "text-emerald-500"} 
-           />
-           <InsightCard 
-             icon={<TrendingUp size={16}/>} 
-             title="Highest Level" 
-             value={insights.maxWater.toFixed(1)} 
-             unit="CM" 
-             color="text-blue-500" 
-           />
-           <InsightCard 
-             icon={<Signal size={16}/>} 
-             title="Network Signal" 
-             customValue={<div className="flex items-center gap-3"><SignalBars csq={insights.avgSignal} /> <span className="text-[10px] font-bold text-slate-400 uppercase">({insights.avgSignal.toFixed(0)} CSQ)</span></div>}
-             color="text-indigo-500" 
-           />
-           <InsightCard 
-             icon={<History size={16}/>} 
-             title="Total Data Points" 
-             value={insights.total} 
-             unit="Logs" 
-             color="text-amber-500" 
-           />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 print:hidden">
+           <InsightCard icon={<ActivitySquare size={16}/>} title="Rate of Change" value={insights.rateOfChange} unit="CM / HR" color={Number(insights.rateOfChange) > 0 ? "text-orange-500" : "text-emerald-500"} />
+           <InsightCard icon={<TrendingUp size={16}/>} title="Highest Level" value={insights.maxWater.toFixed(1)} unit="CM" color="text-blue-500" />
+           <InsightCard icon={<Signal size={16}/>} title="Network Signal" customValue={<div className="flex items-center gap-3"><SignalBars csq={insights.avgSignal} /> <span className="text-[10px] font-bold text-slate-400 uppercase">({insights.avgSignal.toFixed(0)} CSQ)</span></div>} color="text-indigo-500" />
+           <InsightCard icon={<History size={16}/>} title="Total Data Points" value={insights.total} unit="Logs" color="text-amber-500" />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-8 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col min-h-[450px]">
-            <div className="flex justify-between items-center mb-6">
+        {/* 🌟 1. ส่วนกราฟ (ตอนปริ้นท์ให้ขยายเต็ม 100% ไม่มีขอบ) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 print:block">
+          <div className="lg:col-span-8 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col min-h-[450px] print:w-full print:border-none print:shadow-none print:p-0 print:mb-8 print:min-h-[300px]">
+            <div className="flex justify-between items-center mb-6 print:hidden">
               <h3 className="text-xs font-bold uppercase tracking-wider flex items-center gap-2 text-slate-700 dark:text-slate-300"><Activity size={16} className="text-blue-500" /> Trend Analytics</h3>
               <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
                 {['day', 'week', 'month'].map(tf => (
-                  <button key={tf} onClick={() => setTimeframe(tf)} className={`px-4 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all ${timeframe === tf ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>{tf}</button>
+                  <button key={tf} onClick={() => setTimeframe(tf)} className={`px-4 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all ${timeframe === tf ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm' : 'text-slate-500'}`}>{tf}</button>
                 ))}
               </div>
             </div>
+            {/* หัวข้อกราฟตอนปริ้นท์ */}
+            <h2 className="hidden print:block text-xl font-bold mb-4">1. Trend Analytics Chart</h2>
             <div className="flex-grow">
               <WaterLevelChart data={logs.filter(l => selectedDeviceMac === 'ALL' || (l.mac || l.device_id) === selectedDeviceMac)} timeframe={timeframe} isDark={resolvedTheme === 'dark'} devices={devices} selectedDeviceMac={selectedDeviceMac} />
             </div>
           </div>
-          <div className="lg:col-span-4 flex flex-col gap-6">
+          {/* ซ่อนถังน้ำตอนปริ้นท์ */}
+          <div className="lg:col-span-4 flex flex-col gap-6 print:hidden">
             <WaterTank level={waterInTank} />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-          <div className="xl:col-span-7 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col">
-             <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 flex items-center gap-2">
-                <MapIcon size={16} className="text-slate-500" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Node Locations</h3>
-             </div>
-             <div className="flex-grow p-4">
-                <div className="h-[350px] w-full rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 relative z-0">
-                   <DeviceMap devices={devices.filter(d => selectedDeviceMac === 'ALL' || d.mac === selectedDeviceMac)} />
-                </div>
-             </div>
+        {/* 🌟 2. ส่วนข้อมูล (ซ่อนแผนที่ ขยายตารางให้เต็มกระดาษ) */}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 print:block">
+          {/* ซ่อนแผนที่ตอนปริ้นท์ */}
+          <div className="xl:col-span-7 print:hidden">
+             <DeviceMap devices={devices.filter(d => selectedDeviceMac === 'ALL' || d.mac === selectedDeviceMac)} />
           </div>
           
-          <div className="xl:col-span-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col h-[435px]">
-             <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 flex items-center justify-between">
+          <div className="xl:col-span-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col h-[435px] print:w-full print:h-auto print:border-none print:shadow-none print:overflow-visible">
+             <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 flex items-center justify-between print:hidden">
                 <div className="flex items-center gap-2">
                   <Database size={16} className="text-indigo-500" />
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">History</h3>
                 </div>
                 <div className="flex bg-slate-200/50 dark:bg-slate-800 p-1 rounded-lg">
-                  <button onClick={() => setLogTab('ALL')} className={`px-3 py-1.5 text-[9px] font-bold uppercase rounded-md transition-all ${logTab === 'ALL' ? 'bg-white dark:bg-slate-600 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}>All Logs</button>
+                  <button onClick={() => setLogTab('ALL')} className={`px-3 py-1.5 text-[9px] font-bold uppercase rounded-md transition-all ${logTab === 'ALL' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'}`}>All Logs</button>
                   <button onClick={() => setLogTab('ALERTS')} className={`px-3 py-1.5 text-[9px] font-bold uppercase rounded-md transition-all flex items-center gap-1 ${logTab === 'ALERTS' ? 'bg-red-500 text-white shadow-sm' : 'text-slate-500'}`}>
-                    Alerts <span className="bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300 px-1 rounded-full text-[8px]">{logs.filter(l => calculateWater(l.level) >= 10).length}</span>
+                    Alerts <span className="bg-red-100 text-red-600 px-1 rounded-full text-[8px]">{logs.filter(l => calculateWater(l.level) >= 10).length}</span>
                   </button>
                 </div>
              </div>
-             <div className="flex-grow overflow-hidden relative">
+             
+             {/* หัวข้อตารางตอนปริ้นท์ */}
+             <h2 className="hidden print:block text-xl font-bold mb-4 mt-8">2. Raw Data Logs</h2>
+             
+             <div className="flex-grow overflow-hidden relative print:overflow-visible">
                 {displayLogs.length === 0 && logTab === 'ALERTS' ? (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
                     <CheckCircle2 size={32} className="mb-2 text-emerald-500 opacity-50" />
@@ -337,20 +354,15 @@ export default function Home() {
 
 function MetricCard({ label, val, unit, icon, color, trend }: any) {
   return (
-    <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between h-32 group hover:border-blue-200 dark:hover:border-slate-700 transition-all">
+    <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border shadow-sm flex flex-col justify-between h-32">
       <div className="flex justify-between items-start">
-        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{label}</span>
+        <span className="text-[10px] font-bold text-slate-500 uppercase">{label}</span>
         <div className={`p-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 ${color}`}>{icon}</div>
       </div>
       <div>
         <div className="flex items-baseline gap-1.5">
-          <span className={`text-2xl font-black ${color} tracking-tight`}>{val}</span>
-          <span className="text-[10px] font-bold text-slate-400 tracking-wider">{unit}</span>
-        </div>
-        <div className="mt-2 flex items-center gap-2">
-          {trend.direction === 'up' && <span className="flex items-center gap-0.5 text-red-500 text-[10px] font-bold"><TrendingUp size={12} /> +{trend.diff.toFixed(1)}</span>}
-          {trend.direction === 'down' && <span className="flex items-center gap-0.5 text-emerald-500 text-[10px] font-bold"><TrendingDown size={12} /> -{trend.diff.toFixed(1)}</span>}
-          {trend.direction === 'neutral' && <span className="flex items-center gap-0.5 text-slate-400 text-[10px] font-bold"><Minus size={12} /> 0.0</span>}
+          <span className={`text-2xl font-black ${color}`}>{val}</span>
+          <span className="text-[10px] font-bold text-slate-400">{unit}</span>
         </div>
       </div>
     </div>
@@ -359,17 +371,13 @@ function MetricCard({ label, val, unit, icon, color, trend }: any) {
 
 function InsightCard({ icon, title, value, unit, color, customValue }: any) {
   return (
-    <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
-      <div className={`p-3 rounded-full bg-slate-50 dark:bg-slate-800 ${color}`}>
-        {icon}
-      </div>
+    <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border shadow-sm flex items-center gap-4">
+      <div className={`p-3 rounded-full bg-slate-50 dark:bg-slate-800 ${color}`}>{icon}</div>
       <div>
-        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{title}</p>
-        {customValue ? (
-          customValue
-        ) : (
+        <p className="text-[10px] font-bold text-slate-500 uppercase">{title}</p>
+        {customValue ? customValue : (
           <p className={`text-lg font-black ${color}`}>
-            {value} <span className="text-[10px] font-bold text-slate-400 uppercase">{unit}</span>
+            {value} <span className="text-[10px] font-bold text-slate-400">{unit}</span>
           </p>
         )}
       </div>
