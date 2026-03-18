@@ -4,32 +4,32 @@ import React from 'react';
 import { Waves } from 'lucide-react';
 
 export default function WaterTank({ level = 0 }: { level: number }) {
-  // 1. ล็อกค่าน้ำให้อยู่ในช่วง 0-20 ซม.
-  const safeLevel = Math.max(0, Math.min(20, level));
+  // 1. ล็อกค่าน้ำให้อยู่ในช่วง 0-40 ซม. (แก้ความสูงสูงสุดเป็น 40)
+  const safeLevel = Math.max(0, Math.min(40, level));
   
-  // 2. คำนวณเป็นเปอร์เซ็นต์ (เอาไปดันกราฟิกน้ำให้สูงขึ้น)
-  const fillPercentage = (safeLevel / 20) * 100;
+  // 2. คำนวณเป็นเปอร์เซ็นต์ (อัปเดตตัวหารเป็น 40)
+  const fillPercentage = (safeLevel / 40) * 100;
 
-  // 3. กำหนดสีน้ำตามระยะเตือน (10 และ 17 ซม.)
-  let waterColor = 'from-blue-400 to-blue-600'; // สีปกติ (เขียว/ฟ้า)
-  let waveColor = 'bg-blue-300';
-  let statusText = 'NORMAL';
-  let textColor = 'text-blue-600';
+  // 3. กำหนดสีน้ำตามระยะเตือน (>= 25 อันตราย, >= 15 เฝ้าระวัง)
+  let waterColor = 'from-emerald-400 to-emerald-600'; // สีปกติ (เขียว STABLE)
+  let waveColor = 'bg-emerald-300';
+  let statusText = 'STABLE';
+  let textColor = 'text-emerald-500';
 
-  if (safeLevel >= 17) {
+  if (safeLevel >= 25) {
     waterColor = 'from-red-400 to-red-600';
     waveColor = 'bg-red-300';
     statusText = 'CRITICAL';
-    textColor = 'text-red-600';
-  } else if (safeLevel >= 10) {
+    textColor = 'text-red-500';
+  } else if (safeLevel >= 15) {
     waterColor = 'from-orange-400 to-orange-600';
     waveColor = 'bg-orange-300';
     statusText = 'WARNING';
-    textColor = 'text-orange-600';
+    textColor = 'text-orange-500';
   }
 
-  // สร้างสเกลข้างถัง 20, 15, 10, 5, 0
-  const markers = [20, 15, 10, 5, 0];
+  // 4. สร้างสเกลข้างถังให้ตรงกับ 40 cm
+  const markers = [40, 30, 20, 10, 0];
 
   return (
     <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center h-full min-h-[350px]">
