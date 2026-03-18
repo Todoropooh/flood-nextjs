@@ -55,12 +55,12 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // ✅ สูตรคำนวณระดับน้ำแบบปลอดภัย (แก้เป็น 61.4 ให้ตรงกับ ESP32 แล้ว)
+  // ✅ สูตรคำนวณระดับน้ำแบบปลอดภัย (แก้เป็น 84.0 ให้ตรงกับ ESP32 แล้ว)
   const calculateWater = (level: any) => {
-    const raw = Number(level ?? 61.4); 
-    let val = 61.4 - raw;              
-    if (raw <= 0.5 || raw > 65) val = 0; // ถ้าระยะเพี้ยนเกินก้นถังไปมากให้ปัดเป็น 0
-    return val < 0 ? 0 : (val > 20 ? 20 : val);
+    const raw = Number(level ?? 84.0); 
+    let val = 84.0 - raw;              
+    if (raw <= 0.5 || raw > 90) val = 0; // ถ้าระยะเพี้ยนเกินก้นถังไปมากให้ปัดเป็น 0
+    return val < 0 ? 0 : (val > 40 ? 40 : val); // ขยายความสูงสูงสุดเป็น 40 cm
   };
 
   // ✅ คำนวณค่าเฉลี่ย (Safety Guard)
@@ -118,8 +118,9 @@ export default function Home() {
     humid: getTrend(currentHumid, 'humid')
   };
 
-  const status = waterInTank > 14 ? { label: "CRITICAL", color: "text-red-500", bg: "bg-red-500", icon: <ShieldAlert/>, border: "border-red-500/20" }
-               : waterInTank > 7 ? { label: "WARNING", color: "text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle/>, border: "border-orange-500/20" }
+  // ✅ เกณฑ์การเปลี่ยนสี (อัปเดตให้สอดคล้องกับ ESP32: >=25 แดง, >=15 ส้ม, <15 เขียว)
+  const status = waterInTank >= 25 ? { label: "CRITICAL", color: "text-red-500", bg: "bg-red-500", icon: <ShieldAlert/>, border: "border-red-500/20" }
+               : waterInTank >= 15 ? { label: "WARNING", color: "text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle/>, border: "border-orange-500/20" }
                : { label: "STABLE", color: "text-emerald-500", bg: "bg-emerald-500", icon: <CheckCircle2/>, border: "border-emerald-500/20" };
 
   if (!isMounted) return null;
