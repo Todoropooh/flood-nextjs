@@ -15,7 +15,7 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
   }, []);
 
   if (!mounted) {
-    return <div className="w-full h-full bg-slate-100 dark:bg-[#151b2b] animate-pulse rounded-[2rem]"></div>;
+    return <div className="w-full h-full bg-slate-100 dark:bg-[#151b2b] animate-pulse rounded-[2.5rem]"></div>;
   }
 
   const isDark = resolvedTheme === 'dark';
@@ -30,33 +30,31 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
     : defaultCenter;
 
   const createCustomIcon = (device: any) => {
-    // ✅ 1. รับค่าระยะเซนเซอร์ (อิงค่าเริ่มต้น 84.0 ตามหน้าแรก)
+    // ✅ 1. คำนวณระดับน้ำ (V4.4 Logic)
     const rawDist = Number(device.waterLevel ?? device.level ?? 84.0);
-    
-    // ✅ 2. คำนวณความสูงน้ำจริงด้วยสูตรเดียวกับหน้าหลัก (หักลบความคลาดเคลื่อน 5.0 ซม.)
     let wl = (84.0 - rawDist) - 5.0;
     
-    // จัดการค่ารบกวน (Noise) และขีดจำกัดความสูงถัง 40 ซม.
+    // Noise Filter
     if (rawDist <= 0.5 || rawDist > 90) wl = 0; 
     if (wl < 0) wl = 0;
     if (wl > 40) wl = 40;
     
-    // ✅ 3. เช็คเงื่อนไขสีหมุด (วิกฤต >= 20 [แดง], เตือน >= 10 [ส้ม], ปกติ [เขียว])
-    const isCritical = wl >= 20.0;
-    const isWarning = wl >= 10.0;
+    // ✅ 2. ปรับเกณฑ์สีหมุด (แดง >= 10.0, ส้ม >= 5.0)
+    const isCritical = wl >= 10.0;
+    const isWarning = wl >= 5.0;
     
     const dotColor = isCritical ? 'bg-red-500' : isWarning ? 'bg-orange-500' : 'bg-emerald-500';
     const textColor = isCritical ? 'text-red-600 dark:text-red-400' : isWarning ? 'text-orange-600 dark:text-orange-400' : 'text-emerald-600 dark:text-emerald-400';
-    const glowClass = isCritical ? 'shadow-[0_0_15px_rgba(239,68,68,0.8)]' : isWarning ? 'shadow-[0_0_15px_rgba(249,115,22,0.8)]' : 'shadow-[0_0_15px_rgba(16,185,129,0.8)]';
+    const glowClass = isCritical ? 'shadow-[0_0_20px_rgba(239,68,68,0.8)]' : isWarning ? 'shadow-[0_0_20px_rgba(249,115,22,0.8)]' : 'shadow-[0_0_15px_rgba(16,185,129,0.5)]';
 
     const htmlString = `
       <div class="relative flex flex-col items-center -mt-8 cursor-pointer hover:-translate-y-1 transition-transform group z-50">
-        <div class="bg-white/90 dark:bg-[#151b2b]/95 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-lg border border-white/50 dark:border-white/10 mb-1.5 flex flex-col items-center whitespace-nowrap group-hover:scale-110 transition-transform">
-          <span class="text-[10px] font-bold text-slate-800 dark:text-white uppercase tracking-widest">${device.name}</span>
-          <span class="text-[11px] font-black ${textColor}">${wl.toFixed(1)} cm</span>
+        <div class="bg-white/95 dark:bg-[#151b2b]/95 backdrop-blur-md px-3 py-1.5 rounded-2xl shadow-xl border border-white/50 dark:border-white/10 mb-2 flex flex-col items-center whitespace-nowrap scale-90 group-hover:scale-100 transition-transform">
+          <span class="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] mb-0.5">${device.name}</span>
+          <span class="text-[12px] font-black ${textColor}">${wl.toFixed(1)} cm</span>
         </div>
-        <div class="w-4 h-4 rounded-full ${dotColor} ${glowClass} border-2 border-white dark:border-[#151b2b] relative">
-           <div class="absolute inset-0 rounded-full ${dotColor} animate-ping opacity-50"></div>
+        <div class="w-5 h-5 rounded-full ${dotColor} ${glowClass} border-4 border-white dark:border-[#020617] relative">
+           <div class="absolute inset-0 rounded-full ${dotColor} animate-ping opacity-60"></div>
         </div>
       </div>
     `;
@@ -64,13 +62,13 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
     return L.divIcon({
       className: 'bg-transparent', 
       html: htmlString,
-      iconSize: [120, 60],
-      iconAnchor: [60, 45], 
-      popupAnchor: [0, -45] 
+      iconSize: [120, 70],
+      iconAnchor: [60, 55], 
+      popupAnchor: [0, -55] 
     });
   };
 
-  // ✅ ฟังก์ชันช่วยกำหนดสถานะข้อความใน Popup ให้ตรงกับเกณฑ์
+  // ✅ 3. ปรับเกณฑ์ข้อความใน Popup (แดง >= 10.0, ส้ม >= 5.0)
   const getStatusInfo = (device: any) => {
     const rawDist = Number(device.waterLevel ?? device.level ?? 84.0);
     let wl = (84.0 - rawDist) - 5.0;
@@ -78,16 +76,16 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
     if (wl < 0) wl = 0;
     if (wl > 40) wl = 40;
 
-    if (wl >= 20.0) return { text: 'อันตราย (Critical)', color: 'text-red-600' };
-    if (wl >= 10.0) return { text: 'เฝ้าระวัง (Warning)', color: 'text-orange-600' };
-    return { text: 'ปกติ (Stable)', color: 'text-emerald-600' };
+    if (wl >= 10.0) return { text: 'อันตราย (Critical)', color: 'text-red-600 dark:text-red-400' };
+    if (wl >= 5.0) return { text: 'เฝ้าระวัง (Warning)', color: 'text-orange-600 dark:text-orange-400' };
+    return { text: 'ปกติ (Stable)', color: 'text-emerald-600 dark:text-emerald-400' };
   };
 
   return (
     <MapContainer 
       center={center as L.LatLngExpression} 
       zoom={14} 
-      className="w-full h-full rounded-[2rem] z-0"
+      className="w-full h-full rounded-[2.5rem] z-0 shadow-inner"
       zoomControl={false} 
     >
       <TileLayer
@@ -96,27 +94,28 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
       />
       
       {devices.map((device, idx) => {
-         if (!device.lat || !device.lng) return null; 
-         
-         const statusInfo = getStatusInfo(device);
+          if (!device.lat || !device.lng) return null; 
+          
+          const statusInfo = getStatusInfo(device);
 
-         return (
-           <Marker 
-             key={device.mac || idx} 
-             position={[device.lat, device.lng]}
-             icon={createCustomIcon(device)}
-           >
-             <Popup className="custom-popup">
-               <div className="text-center p-1 font-sans">
-                 <h3 className="font-bold text-sm text-slate-800">{device.name}</h3>
-                 <p className="text-[10px] text-slate-500 font-mono mt-1 uppercase">{device.mac}</p>
-                 <p className={`text-[11px] font-bold mt-1 ${statusInfo.color}`}>
-                   สถานะ: {statusInfo.text}
-                 </p>
-               </div>
-             </Popup>
-           </Marker>
-         )
+          return (
+            <Marker 
+              key={device.mac || idx} 
+              position={[device.lat, device.lng]}
+              icon={createCustomIcon(device)}
+            >
+              <Popup className="custom-popup">
+                <div className="text-center p-2 font-sans min-w-[120px]">
+                  <h3 className="font-black text-sm text-slate-800 dark:text-white uppercase tracking-tight">{device.name}</h3>
+                  <div className="h-px bg-slate-100 dark:bg-slate-800 my-2"></div>
+                  <p className="text-[10px] text-slate-400 font-mono uppercase tracking-widest">{device.mac}</p>
+                  <p className={`text-[11px] font-black mt-2 uppercase tracking-wider ${statusInfo.color}`}>
+                    {statusInfo.text}
+                  </p>
+                </div>
+              </Popup>
+            </Marker>
+          )
       })}
     </MapContainer>
   );
