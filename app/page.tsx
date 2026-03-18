@@ -16,7 +16,7 @@ import {
 
 const DeviceMap = dynamic(() => import('@/components/DeviceMap'), { 
   ssr: false,
-  loading: () => <div className="h-[400px] w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-3xl" />
+  loading: () => <div className="h-[400px] w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-[2.5rem]" />
 });
 
 export default function Home() {
@@ -64,13 +64,14 @@ export default function Home() {
     return filtered.length > 0 ? calculateWater(filtered[filtered.length - 1].level) : 0;
   }, [logs, selectedDeviceMac, calculateWater]);
 
+  // 🔥 เกณฑ์ใหม่: แดง 10, ส้ม 5
   const status = waterInTank >= 10 ? { label: "CRITICAL", color: "text-red-500", bg: "bg-red-500", icon: <ShieldAlert size={24}/>, border: "border-red-500", glow: "shadow-red-500/20" }
                : waterInTank >= 5 ? { label: "WARNING", color: "text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle size={24}/>, border: "border-orange-500", glow: "shadow-orange-500/20" }
                : { label: "STABLE", color: "text-emerald-500", bg: "bg-emerald-500", icon: <CheckCircle2 size={24}/>, border: "border-emerald-500", glow: "shadow-emerald-500/20" };
 
   const insights = useMemo(() => {
     const filteredLogs = selectedDeviceMac === 'ALL' ? logs : logs.filter(l => (l.mac || l.device_id) === selectedDeviceMac);
-    if (!filteredLogs.length) return { maxWater: 0, avgSignal: 0, rateOfChange: 0, timeToFlood: null };
+    if (!filteredLogs.length) return { maxWater: 0, avgSignal: 0, rateOfChange: 0, timeToFlood: null, lastUpdate: 'N/A' };
     
     const allWater = filteredLogs.map(l => calculateWater(l.level));
     const latestLog = filteredLogs[filteredLogs.length - 1];
@@ -85,39 +86,34 @@ export default function Home() {
       timeStr = mins > 0 ? `${mins} นาที` : "เร็วๆ นี้";
     }
 
-    return { maxWater: Math.max(...allWater), avgSignal: 25, rateOfChange: rate, timeToFlood: timeStr };
+    return { 
+      maxWater: Math.max(...allWater), 
+      avgSignal: latestLog.signal || 0, 
+      rateOfChange: rate, 
+      timeToFlood: timeStr,
+      lastUpdate: new Date(latestLog.createdAt).toLocaleTimeString('th-TH')
+    };
   }, [logs, selectedDeviceMac, calculateWater, waterInTank]);
 
   if (!isMounted) return null;
 
   return (
-    <div className="min-h-screen bg-[#F1F5F9] dark:bg-[#020617] transition-all duration-500 font-sans">
-      {/* Header ดีไซน์ใหม่ */}
+    <div className="min-h-screen bg-[#F1F5F9] dark:bg-[#020617] transition-all duration-500 font-sans pb-10">
       <header className="sticky top-0 z-[100] bg-white/70 dark:bg-slate-950/70 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 px-8 py-4 print:hidden">
         <div className="max-w-[1600px] mx-auto flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl text-white shadow-lg shadow-blue-500/30">
-              <Waves size={24}/>
-            </div>
-            <div>
-              <h1 className="text-xl font-black tracking-tight text-slate-800 dark:text-white leading-none">FLOOD MONITOR</h1>
-              <p className="text-[10px] font-bold text-blue-500 uppercase tracking-[0.2em] mt-1 text-center">Version 4.4 Enterprise</p>
-            </div>
+            <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl text-white shadow-lg shadow-blue-500/30"><Waves size={24}/></div>
+            <h1 className="text-xl font-black tracking-tight text-slate-800 dark:text-white uppercase">Flood Monitor Enterprise</h1>
           </div>
-
           <div className="flex items-center gap-3">
-            <button onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')} className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-500 hover:text-blue-500 transition-all border border-slate-200 dark:border-slate-800">
-              <Sun size={20}/>
-            </button>
-            <Link href="/admin" className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-500 hover:text-blue-500 transition-all border border-slate-200 dark:border-slate-800">
-              <Settings size={20} />
-            </Link>
+             <button onClick={() => window.print()} className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-blue-500 transition-all"><FileText size={20}/></button>
+             <button onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')} className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-blue-500 transition-all"><Sun size={20}/></button>
+             <Link href="/admin" className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-blue-500 transition-all"><Settings size={20} /></Link>
           </div>
         </div>
       </header>
 
       <main className="max-w-[1600px] mx-auto p-6 space-y-8">
-        {/* ส่วนบน: สถานะหลัก (Hero Section) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className={`lg:col-span-4 p-8 rounded-[2.5rem] bg-white dark:bg-slate-900 border-2 ${status.border} ${status.glow} shadow-2xl flex flex-col justify-between relative overflow-hidden group`}>
              <div className="relative z-10">
@@ -135,55 +131,30 @@ export default function Home() {
           </div>
 
           <div className="lg:col-span-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-             <StatCard icon={<TrendingUp />} label="Highest Today" value={insights.maxWater.toFixed(1)} unit="cm" color="blue" />
-             <StatCard icon={<ActivitySquare />} label="Rate of Change" value={(insights.rateOfChange > 0 ? "+" : "") + insights.rateOfChange.toFixed(1)} unit="cm/hr" color="orange" />
-             <StatCard icon={<Zap />} label="Time to Flood" value={insights.timeToFlood || "Stable"} unit="" color="pink" />
-             <StatCard icon={<Signal />} label="Network" value="Excellent" unit="CSQ: 25" color="indigo" />
+             <StatCard icon={<TrendingUp />} label="Highest" value={insights.maxWater.toFixed(1)} unit="cm" color="blue" />
+             <StatCard icon={<ActivitySquare />} label="Rate" value={(insights.rateOfChange > 0 ? "+" : "") + insights.rateOfChange.toFixed(1)} unit="cm/h" color="orange" />
+             <StatCard icon={<Zap />} label="Prediction" value={insights.timeToFlood || "Stable"} unit="" color="pink" />
+             <StatCard icon={<Signal />} label="Signal" value={insights.avgSignal} unit="CSQ" color="indigo" />
           </div>
         </div>
 
-        {/* ส่วนกลาง: กราฟและถังน้ำ */}
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-          <div className="xl:col-span-8 bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl">
+          <div className="xl:col-span-8 bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl min-h-[500px]">
              <div className="flex justify-between items-center mb-8">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-50 dark:bg-blue-900/30 text-blue-500 rounded-lg"><Activity size={20}/></div>
-                  <h3 className="font-black text-slate-700 dark:text-white uppercase tracking-wider">Trend Analysis</h3>
-                </div>
-                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+                <h3 className="font-black text-slate-700 dark:text-white uppercase tracking-wider flex items-center gap-3"><Activity className="text-blue-500"/> Trend Analysis</h3>
+                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
                   {['day', 'week', 'month'].map(tf => (
-                    <button key={tf} onClick={() => setTimeframe(tf)} className={`px-5 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${timeframe === tf ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-md scale-105' : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'}`}>{tf}</button>
+                    <button key={tf} onClick={() => setTimeframe(tf)} className={`px-5 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${timeframe === tf ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-md' : 'text-slate-500'}`}>{tf}</button>
                   ))}
                 </div>
              </div>
-             <div className="h-[400px]">
-                <WaterLevelChart data={logs} isDark={resolvedTheme === 'dark'} />
+             <div className="h-[380px]">
+                <WaterLevelChart data={logs} isDark={resolvedTheme === 'dark'} devices={devices} timeframe={timeframe} selectedDeviceMac={selectedDeviceMac} />
              </div>
           </div>
-
           <div className="xl:col-span-4">
              <WaterTank level={waterInTank} />
           </div>
-        </div>
-
-        {/* ส่วนล่าง: แผนที่และประวัติ */}
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-           <div className="xl:col-span-7 rounded-[2.5rem] overflow-hidden border border-slate-200 dark:border-slate-800 shadow-xl bg-white dark:bg-slate-900 p-4">
-              <div className="h-[450px] rounded-[2rem] overflow-hidden">
-                <DeviceMap devices={devices} />
-              </div>
-           </div>
-           <div className="xl:col-span-5 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden flex flex-col">
-              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
-                 <div className="flex items-center gap-3 font-black uppercase text-slate-700 dark:text-white tracking-widest text-sm">
-                    <Database className="text-indigo-500" size={18}/> History Logs
-                 </div>
-                 <button className="text-[10px] font-bold text-blue-500 hover:underline uppercase">View All</button>
-              </div>
-              <div className="flex-grow overflow-auto">
-                 <RecentLogs logs={logs} />
-              </div>
-           </div>
         </div>
       </main>
     </div>
@@ -198,8 +169,8 @@ function StatCard({ icon, label, value, unit, color }: any) {
     indigo: "text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10"
   };
   return (
-    <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-md hover:scale-[1.02] transition-all cursor-default group">
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 transition-colors ${colors[color]}`}>{icon}</div>
+    <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-md group">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 ${colors[color]}`}>{icon}</div>
       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</div>
       <div className="text-2xl font-black text-slate-800 dark:text-white mt-1">{value} <span className="text-[10px] text-slate-400">{unit}</span></div>
     </div>
