@@ -53,17 +53,20 @@ export default function WaterLevelChart({
       const deviceLogs = data.filter((l: any) => l.mac === dev.mac);
       const mainColor = nodeColors[idx % nodeColors.length];
 
-      // 🌊 ระดับน้ำ
+      // 🌊 ระดับน้ำ (แก้ให้ตรงกับสูตรหน้าแรก 84.0 และหักลบ 5.0)
       if (viewMode === 'ALL_METRICS' || viewMode === 'LEVEL') {
         datasets.push({
           label: `🌊 ${dev.name} - น้ำ (cm)`,
           data: labels.map((_, index) => {
             if (deviceLogs.length === 0) return null;
             const log = deviceLogs[Math.floor((index / labels.length) * deviceLogs.length)];
-            const raw = Number(log?.level || 0);
-            let val = 95 - raw;
-            if (raw <= 0.5 || raw > 80) val = 0;
-            return val < 0 ? 0 : (val > 20 ? 20 : val);
+            const raw = Number(log?.level || 84.0);
+            
+            // 🌟 ใช้สูตรเดียวกันเป๊ะกับหน้า page.tsx
+            let val = (84.0 - raw) - 5.0; 
+            
+            if (raw <= 0.5 || raw > 90) val = 0;
+            return val < 0 ? 0 : (val > 40 ? 40 : val); // ถัง 40 cm
           }),
           borderColor: mainColor,
           backgroundColor: mainColor + '15',
@@ -90,7 +93,7 @@ export default function WaterLevelChart({
         });
       }
 
-      // 💧 ความชื้น (เอากลับมาแล้วครับ!)
+      // 💧 ความชื้น
       if (viewMode === 'ALL_METRICS' || viewMode === 'HUMIDITY') {
         datasets.push({
           label: `💧 ${dev.name} - Humid (%)`,
@@ -119,7 +122,10 @@ export default function WaterLevelChart({
     },
     scales: {
       x: { ticks: { color: isDark ? '#64748b' : '#94a3b8', font: { size: 10 } }, grid: { display: false } },
-      y: { display: viewMode !== 'TEMP' && viewMode !== 'HUMIDITY', position: 'left', min: 0, max: 25, ticks: { color: '#3b82f6' } },
+      
+      // 🌟 แก้สเกลน้ำแกน Y ด้านซ้ายให้แสดง 0-45 cm (เพื่อให้กราฟน้ำไม่ล้นขอบบนตอนน้ำเต็ม 40)
+      y: { display: viewMode !== 'TEMP' && viewMode !== 'HUMIDITY', position: 'left', min: 0, max: 45, ticks: { color: '#3b82f6' } },
+      
       y1: { display: viewMode === 'ALL_METRICS' || viewMode === 'TEMP', position: 'right', min: 10, max: 50, ticks: { color: '#f97316' }, grid: { display: false } },
       y2: { display: viewMode === 'ALL_METRICS' || viewMode === 'HUMIDITY', position: 'right', min: 0, max: 100, ticks: { color: '#06b6d4' }, grid: { display: false } }
     }

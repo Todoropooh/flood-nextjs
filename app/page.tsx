@@ -60,7 +60,6 @@ export default function Home() {
     const raw = Number(level ?? 84.0); 
     
     // 🌟 หักลบค่าความคลาดเคลื่อนออก 5.0 ซม. เพื่อให้หน้าเว็บตรงกับของจริงมากขึ้น
-    // ถ้าหน้าเว็บยังสูงไป หรือต่ำไป พี่สามารถแก้ตัวเลข 5.0 ตรงนี้ได้เลยครับ
     let val = (84.0 - raw) - 5.0; 
     
     if (raw <= 0.5 || raw > 90) val = 0; 
@@ -122,9 +121,11 @@ export default function Home() {
     humid: getTrend(currentHumid, 'humid')
   };
 
-  // ✅ เกณฑ์การเปลี่ยนสี (>= 25 แดง, >= 15 ส้ม, < 15 เขียว)
-  const status = waterInTank >= 25 ? { label: "CRITICAL", color: "text-red-500", bg: "bg-red-500", icon: <ShieldAlert/>, border: "border-red-500/20" }
-               : waterInTank >= 15 ? { label: "WARNING", color: "text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle/>, border: "border-orange-500/20" }
+  // ✅ 🌟 เกณฑ์การเปลี่ยนสีใหม่ (ห่างกันระยะละประมาณ 7 ซม.)
+  // แดง (CRITICAL) = 17 ซม. ขึ้นไป
+  // ส้ม (WARNING) = 10 ซม. ขึ้นไป
+  const status = waterInTank >= 17 ? { label: "CRITICAL", color: "text-red-500", bg: "bg-red-500", icon: <ShieldAlert/>, border: "border-red-500/20" }
+               : waterInTank >= 10 ? { label: "WARNING", color: "text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle/>, border: "border-orange-500/20" }
                : { label: "STABLE", color: "text-emerald-500", bg: "bg-emerald-500", icon: <CheckCircle2/>, border: "border-emerald-500/20" };
 
   if (!isMounted) return null;
