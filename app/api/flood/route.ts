@@ -5,21 +5,25 @@ import Device from "@/db/models/Device";
 
 export const dynamic = 'force-dynamic';
 
-// 🌟 1. เพิ่มตัวแปรกัน Spam LINE (ป้องกันไม่ให้ข้อความเด้งรัวๆ ทุก 5 วินาที)
-const lastAlertTime = new Map<string, number>();
-const ALERT_COOLDOWN = 3 * 60 * 1000; // หน่วงเวลาแจ้งเตือนซ้ำ 3 นาที
-
-// --- ฟังก์ชันส่ง LINE ---
+// --- ฟังก์ชันส่ง LINE พร้อมจับ Error ---
 async function sendLineMessage(message: string) {
   const ACCESS_TOKEN = "JSP4AFcQD0fSIwxGBIQXT+W2h/sD3wcdPUaLPu5I4znODmfu9l1qLVMgP328d/CZbBD8vRxfgv0LMwtc5Hn3MnQEovNDRLejZJ/VstvpNgfi98Kv/RXYQUQMbgg4TEbDeii03sBTNE4L9hkwS7tV/wdB04t89/1O/w1cDnyilFU="; 
   const USER_ID = "Ub9d815d4781936f90560a1c8f243d859"; 
   try {
-    await fetch('https://api.line.me/v2/bot/message/push', {
+    const response = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ACCESS_TOKEN}` },
       body: JSON.stringify({ to: USER_ID, messages: [{ type: "text", text: message }] }),
     });
-  } catch (error) { console.error("❌ LINE Error:", error); }
+    
+    // ดึงคำตอบจาก LINE มาดูว่าส่งผ่านไหม หรือติด Limit
+    const result = await response.text();
+    console.log("📨 LINE API Response:", result);
+    return result; 
+  } catch (error: any) { 
+    console.error("❌ LINE Error:", error); 
+    return error.message;
+  }
 }
 
 // --- บันทึกข้อมูลจาก ESP32 ---
@@ -28,7 +32,7 @@ export async function POST(request: NextRequest) {
     const payload = await request.json(); 
     await connectDB();
 
-    const currentLevel = Number(payload.level ?? 0); // ได้ค่าระยะเซ็นเซอร์ดิบมา
+    const currentLevel = Number(payload.level ?? 0);
     const currentTemp = Number(payload.temperature ?? 0);
     const currentHumid = Number(payload.air_humidity ?? payload.humidity ?? 0);
 
@@ -40,7 +44,6 @@ export async function POST(request: NextRequest) {
 
     if (!device) return NextResponse.json({ error: "Device not found" }, { status: 404 });
 
-    // บันทึกลง WaterLog
     await WaterLog.create({
       mac: payload.mac,
       level: currentLevel,
@@ -48,69 +51,54 @@ export async function POST(request: NextRequest) {
       air_humidity: currentHumid
     });
 
-    // ✅ 2. แปลงระยะเซ็นเซอร์ให้เป็นระดับน้ำจริง (สูตรเดียวกับหน้าเว็บ)
+    // 🌟 คำนวณระดับน้ำ 
     let wl = (84.0 - currentLevel) - 5.0;
     if (currentLevel <= 0.5 || currentLevel > 90) wl = 0;
     if (wl > 40) wl = 40;
     if (wl < 0) wl = 0;
 
-    // ✅ 3. NEW ALERT LOGIC: แจ้งเตือนตามระดับน้ำ (แดง >= 20, ส้ม >= 10)
+    let lineDebugMessage = "ไม่ได้เข้าเงื่อนไขเตือนน้ำ";
+
+    // 🌟 บังคับเทสต์ส่ง LINE (ถ้าน้ำเกิน 10 ซม.)
     if (device.isActive) {
       let alertStatus = "";
-      
-      if (wl >= 20.0) {
-        alertStatus = "🚨 [อันตราย] ระดับน้ำวิกฤต!";
-      } else if (wl >= 10.0) {
-        alertStatus = "⚠️ [เฝ้าระวัง] ระดับน้ำสูงกว่าเกณฑ์!";
-      }
+      if (wl >= 20.0) alertStatus = "🚨 [อันตราย] ระดับน้ำวิกฤต!";
+      else if (wl >= 10.0) alertStatus = "⚠️ [เฝ้าระวัง] ระดับน้ำสูงกว่าเกณฑ์!";
 
-      // ตรวจสอบระบบ Cooldown เพื่อกัน Spam
-      const now = Date.now();
-      const lastAlert = lastAlertTime.get(payload.mac) || 0;
-
-      // ถ้าเข้าเกณฑ์แจ้งเตือน และ ผ่านไปแล้ว 3 นาทีจากการเตือนครั้งล่าสุด
-      if (alertStatus !== "" && (now - lastAlert > ALERT_COOLDOWN)) {
-        // อัปเดตข้อความให้โชว์เป็น "ระดับน้ำ" (ซม.) แทนระยะเซ็นเซอร์
+      if (alertStatus !== "") {
         const alertMsg = `${alertStatus}\n📍 ${device.name}\n🌊 ระดับน้ำ: ${wl.toFixed(1)} cm\n🌡️ ${currentTemp.toFixed(1)}°C | 💧 ${currentHumid.toFixed(1)}%`;
         
-        await sendLineMessage(alertMsg);
-        
-        // บันทึกเวลาที่เพิ่งส่งไป
-        lastAlertTime.set(payload.mac, now);
+        // สั่งส่ง LINE และเก็บผลลัพธ์
+        lineDebugMessage = await sendLineMessage(alertMsg) || "เกิดข้อผิดพลาดในการเรียก LINE API";
       }
+    } else {
+      lineDebugMessage = "ระบบถูกปิดอยู่ (isActive = false)";
     }
 
     return NextResponse.json({ 
       success: true, 
       isBuzzerEnabled: device.isBuzzerEnabled, 
-      isActive: device.isActive 
+      isActive: device.isActive,
+      line_status: lineDebugMessage // 👈 ส่งค่า Error กลับไปให้ ESP32 อ่าน!
     });
   } catch (error: any) { 
     return NextResponse.json({ error: error.message }, { status: 500 }); 
   }
 }
 
-// --- ดึงข้อมูลย้อนหลังตาม Timeframe (Day/Week/Month) ---
+// --- ดึงข้อมูลย้อนหลัง ---
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
-    
     const { searchParams } = new URL(request.url);
     const timeframe = searchParams.get('timeframe') || 'day';
 
     let startDate = new Date();
-    if (timeframe === 'day') {
-      startDate.setHours(startDate.getHours() - 24);
-    } else if (timeframe === 'week') {
-      startDate.setDate(startDate.getDate() - 7);
-    } else if (timeframe === 'month') {
-      startDate.setMonth(startDate.getMonth() - 1);
-    }
+    if (timeframe === 'day') startDate.setHours(startDate.getHours() - 24);
+    else if (timeframe === 'week') startDate.setDate(startDate.getDate() - 7);
+    else if (timeframe === 'month') startDate.setMonth(startDate.getMonth() - 1);
 
-    const logs = await WaterLog.find({
-      createdAt: { $gte: startDate }
-    }).sort({ createdAt: 1 });
-
+    const logs = await WaterLog.find({ createdAt: { $gte: startDate } }).sort({ createdAt: 1 });
     return NextResponse.json(logs);
   } catch (error: any) { 
     return NextResponse.json({ error: error.message }, { status: 500 }); 
