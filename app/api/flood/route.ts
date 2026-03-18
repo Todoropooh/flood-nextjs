@@ -6,9 +6,8 @@ import Device from "@/db/models/Device";
 export const dynamic = 'force-dynamic';
 
 const lastAlertTime = new Map<string, number>();
-const ALERT_COOLDOWN = 1 * 60 * 1000; // 🌟 หน่วงเวลาแจ้งเตือนซ้ำ 1 นาที
+const ALERT_COOLDOWN = 1 * 60 * 1000; // หน่วงเวลา 1 นาที
 
-// --- ฟังก์ชันส่ง LINE ---
 async function sendLineMessage(message: string) {
   const ACCESS_TOKEN = "JSP4AFcQD0fSIwxGBIQXT+W2h/sD3wcdPUaLPu5I4znODmfu9l1qLVMgP328d/CZbBD8vRxfgv0LMwtc5Hn3MnQEovNDRLejZJ/VstvpNgfi98Kv/RXYQUQMbgg4TEbDeii03sBTNE4L9hkwS7tV/wdB04t89/1O/w1cDnyilFU="; 
   const USER_ID = "Ub9d815d4781936f90560a1c8f243d859"; 
@@ -18,16 +17,10 @@ async function sendLineMessage(message: string) {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ACCESS_TOKEN}` },
       body: JSON.stringify({ to: USER_ID, messages: [{ type: "text", text: message }] }),
     });
-    const result = await response.text();
-    console.log("📨 LINE API Response:", result);
-    return result; 
-  } catch (error: any) { 
-    console.error("❌ LINE Error:", error); 
-    return error.message;
-  }
+    return await response.text();
+  } catch (error: any) { return error.message; }
 }
 
-// --- บันทึกข้อมูลจาก ESP32 ---
 export async function POST(request: NextRequest) {
   try {
     const payload = await request.json(); 
@@ -36,7 +29,7 @@ export async function POST(request: NextRequest) {
     const currentLevel = Number(payload.level ?? 0);
     const currentTemp = Number(payload.temperature ?? 0);
     const currentHumid = Number(payload.air_humidity ?? payload.humidity ?? 0);
-    const currentSignal = Number(payload.signal ?? 0); // ✅ รับค่า Signal
+    const currentSignal = Number(payload.signal ?? 0);
 
     const device = await Device.findOneAndUpdate(
       { mac: payload.mac },
@@ -46,7 +39,6 @@ export async function POST(request: NextRequest) {
 
     if (!device) return NextResponse.json({ error: "Device not found" }, { status: 404 });
 
-    // ✅ บันทึก Signal ลงตาราง
     await WaterLog.create({
       mac: payload.mac,
       level: currentLevel,
@@ -55,52 +47,40 @@ export async function POST(request: NextRequest) {
       signal: currentSignal
     });
 
-    // 🌟 คำนวณระดับน้ำแบบเป๊ะๆ 
+    // 🌟 คำนวณระดับน้ำ
     let wl = (84.0 - currentLevel) - 5.0;
     if (currentLevel <= 0.5 || currentLevel > 90) wl = 0;
     if (wl > 40) wl = 40;
     if (wl < 0) wl = 0;
 
-    let lineDebugMessage = "ไม่ได้เข้าเงื่อนไขเตือนน้ำ";
-
+    let lineStatus = "Normal";
     if (device.isActive) {
       let alertStatus = "";
-      if (wl >= 20.0) alertStatus = "🚨 [อันตราย] ระดับน้ำวิกฤต!";
-      else if (wl >= 10.0) alertStatus = "⚠️ [เฝ้าระวัง] ระดับน้ำสูงกว่าเกณฑ์!";
+      // 🔥 ปรับเกณฑ์ LINE: แดง 10, ส้ม 5
+      if (wl >= 10.0) alertStatus = "🚨 [อันตราย] ระดับน้ำวิกฤต!";
+      else if (wl >= 5.0) alertStatus = "⚠️ [เฝ้าระวัง] ระดับน้ำสูงกว่าเกณฑ์!";
 
       if (alertStatus !== "") {
         const now = Date.now();
         const lastAlert = lastAlertTime.get(payload.mac) || 0;
-
-        // เช็คว่าผ่านไป 1 นาทีหรือยัง
         if (now - lastAlert > ALERT_COOLDOWN) {
           const alertMsg = `${alertStatus}\n📍 ${device.name}\n🌊 ระดับน้ำ: ${wl.toFixed(1)} cm\n🌡️ ${currentTemp.toFixed(1)}°C | 💧 ${currentHumid.toFixed(1)}%`;
-          lineDebugMessage = await sendLineMessage(alertMsg) || "Sent LINE";
-          lastAlertTime.set(payload.mac, now); // อัปเดตเวลาที่ส่งไปล่าสุด
-        } else {
-          lineDebugMessage = "ติด Cooldown (รอ 1 นาทีค่อยส่งใหม่)";
+          await sendLineMessage(alertMsg);
+          lastAlertTime.set(payload.mac, now);
+          lineStatus = "Sent Alert";
         }
       }
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      isBuzzerEnabled: device.isBuzzerEnabled, 
-      isActive: device.isActive,
-      line_status: lineDebugMessage 
-    });
-  } catch (error: any) { 
-    return NextResponse.json({ error: error.message }, { status: 500 }); 
-  }
+    return NextResponse.json({ success: true, line_status: lineStatus });
+  } catch (error: any) { return NextResponse.json({ error: error.message }, { status: 500 }); }
 }
 
-// --- ดึงข้อมูลย้อนหลัง ---
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
     const { searchParams } = new URL(request.url);
     const timeframe = searchParams.get('timeframe') || 'day';
-
     let startDate = new Date();
     if (timeframe === 'day') startDate.setHours(startDate.getHours() - 24);
     else if (timeframe === 'week') startDate.setDate(startDate.getDate() - 7);
@@ -108,7 +88,5 @@ export async function GET(request: NextRequest) {
 
     const logs = await WaterLog.find({ createdAt: { $gte: startDate } }).sort({ createdAt: 1 });
     return NextResponse.json(logs);
-  } catch (error: any) { 
-    return NextResponse.json({ error: error.message }, { status: 500 }); 
-  }
+  } catch (error: any) { return NextResponse.json({ error: error.message }, { status: 500 }); }
 }
