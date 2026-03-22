@@ -7,8 +7,7 @@ import { useTheme } from 'next-themes';
 import { 
   ArrowLeft, Trash2, XCircle, Search, Cpu, 
   Plus, Edit2, Users, ShieldCheck, Image as ImageIcon, 
-  Loader2, FileText, Calendar, Sun, Moon, Settings, UserCog,
-  Save, AlertTriangle, CheckCircle2 // 🌟 เพิ่มไอคอนสำหรับฟีเจอร์ใหม่
+  Loader2, FileText, Calendar, Sun, Moon, Settings, UserCog
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -40,14 +39,9 @@ export default function AdminPage() {
   const [systemSettings, setSystemSettings] = useState({ systemOn: true, buzzerOn: true });
   const [exportLogs, setExportLogs] = useState<any[]>([]); 
 
-  // 🌟 [PHASE 3] ตัวแปรเก็บค่าเกณฑ์ระดับน้ำ
-  const [warningLevel, setWarningLevel] = useState<number>(5.0);
-  const [criticalLevel, setCriticalLevel] = useState<number>(10.0);
-  const [isSettingsSaved, setIsSettingsSaved] = useState(false);
-
   const defaultDevice = { 
     name: '', mac: '', location: '', type: 'ESP32', image: '', 
-    warningThreshold: 3.0, criticalThreshold: 7.0, lat: 14.8824, lng: 103.4936,
+    warningThreshold: 5.0, criticalThreshold: 10.0, lat: 14.8824, lng: 103.4936,
     isActive: true, isBuzzerEnabled: true 
   };
   
@@ -60,13 +54,6 @@ export default function AdminPage() {
     setIsMounted(true); 
     fetchData();
     fetchSettings();
-    
-    // 🌟 โหลดค่าเกณฑ์น้ำจาก LocalStorage ตอนเปิดหน้า
-    const savedWarning = localStorage.getItem('flood_warning_level');
-    const savedCritical = localStorage.getItem('flood_critical_level');
-    if (savedWarning) setWarningLevel(Number(savedWarning));
-    if (savedCritical) setCriticalLevel(Number(savedCritical));
-
     setTimeout(() => setShowUI(true), 100);
   }, []);
 
@@ -87,14 +74,6 @@ export default function AdminPage() {
       if (devRes.ok) setDevices(await devRes.json());
       if (userRes.ok) setUsers(await userRes.json());
     } catch (e) { console.error(e); }
-  };
-
-  // 🌟 ฟังก์ชันบันทึกระดับน้ำ
-  const handleSaveThresholds = () => {
-    localStorage.setItem('flood_warning_level', warningLevel.toString());
-    localStorage.setItem('flood_critical_level', criticalLevel.toString());
-    setIsSettingsSaved(true);
-    setTimeout(() => setIsSettingsSaved(false), 3000);
   };
 
   const executeExportPDF = async () => {
@@ -258,124 +237,137 @@ export default function AdminPage() {
   const myProfileData = users.find(u => u.username === (session?.user as any)?.username);
 
   return (
-    <main className="min-h-screen relative font-sans text-slate-800 dark:text-white pb-20 bg-slate-50 dark:bg-[#090e17] transition-colors duration-700">
-      <div className="fixed inset-0 -z-10">
-        <img src="https://img.freepik.com/premium-photo/gradient-defocused-abstract-luxury-vivid-blurred-colorful-texture-wallpaper-photo-background_98870-1088.jpg" className="w-full h-full object-cover" alt="bg" />
-        <div className="absolute inset-0 bg-white/20 dark:bg-black/40 backdrop-blur-xl" />
-      </div>
-
-      <div className={`sticky top-0 z-40 w-full bg-white/40 dark:bg-[#0a0f1c]/50 backdrop-blur-2xl border-b border-white/50 dark:border-white/10 shadow-sm transition-all duration-1000 ${showUI ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
-        <div className="max-w-6xl mx-auto px-4 py-4 space-y-4">
+    <main className="min-h-screen relative font-sans text-slate-800 dark:text-slate-100 pb-20 bg-slate-100 dark:bg-[#020617] transition-colors duration-500">
+      
+      {/* 🌟 UI ใหม่: หัวเว็บแบบทึบ เน้นความชัดเจน */}
+      <div className={`sticky top-0 z-40 w-full bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm transition-all duration-700 ${showUI ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
+        <div className="max-w-6xl mx-auto px-6 py-4 space-y-4">
+          
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Link href="/" className="p-2 bg-white/50 dark:bg-white/5 rounded-lg border border-white/50 shadow-sm"><ArrowLeft size={16} /></Link>
-              <h1 className="text-sm font-bold tracking-wide flex items-center gap-2"><ShieldCheck size={16} className="text-blue-600 dark:text-blue-400" /> Admin Portal</h1>
+              <Link href="/" className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+                <ArrowLeft size={16} className="text-slate-600 dark:text-slate-300" />
+              </Link>
+              <h1 className="text-sm font-black tracking-wide flex items-center gap-2 text-slate-800 dark:text-white uppercase">
+                <ShieldCheck size={18} className="text-blue-600" /> Admin Portal
+              </h1>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')} className="p-2 rounded-xl bg-white/40 dark:bg-black/40 border border-white/50 transition-all">
-                {resolvedTheme === 'dark' ? <Sun size={14}/> : <Moon size={14}/>}
+              <button onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')} className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-blue-600 transition-colors">
+                {resolvedTheme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}
               </button>
-              <button onClick={() => signOut()} className="px-4 py-2 bg-red-500/10 text-red-600 rounded-lg text-[10px] font-bold uppercase border border-red-500/20 shadow-sm">Logout</button>
+              <button onClick={() => signOut()} className="px-4 py-2.5 bg-red-50 dark:bg-red-500/10 text-red-600 rounded-xl text-[11px] font-black uppercase transition-colors hover:bg-red-100 dark:hover:bg-red-500/20">
+                Logout
+              </button>
             </div>
           </div>
 
-          <div className="flex flex-col lg:flex-row gap-4 items-center justify-between pb-1">
+          <div className="flex flex-col lg:flex-row gap-4 items-center justify-between pt-2">
             {myProfileData && (
-              <div className="flex items-center justify-between w-full lg:w-auto gap-4 bg-white/40 dark:bg-black/20 border border-white/50 p-2 pr-3 rounded-2xl shadow-sm backdrop-blur-md text-left">
+              <div className="flex items-center justify-between w-full lg:w-auto gap-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-2 pr-3 rounded-2xl">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 border border-white/80 overflow-hidden flex items-center justify-center text-white font-black text-lg shadow-md shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 overflow-hidden flex items-center justify-center text-white font-black text-lg shadow-sm shrink-0">
                     {myProfileData.image ? <img src={myProfileData.image} className="w-full h-full object-cover" alt="Me" /> : myProfileData.firstname.charAt(0)}
                   </div>
                   <div>
-                    <h2 className="text-xs font-bold">สวัสดี, {myProfileData.firstname}</h2>
-                    <p className="text-[9px] text-slate-500 uppercase mt-0.5">Administrator</p>
+                    <h2 className="text-xs font-bold text-slate-700 dark:text-slate-200">สวัสดี, {myProfileData.firstname}</h2>
+                    <p className="text-[9px] text-slate-400 uppercase mt-0.5 font-bold">Administrator</p>
                   </div>
                 </div>
-                <button onClick={() => { setEditingId(myProfileData._id); setUserFormData({...myProfileData, password: ''}); setIsUserModalOpen(true); setTimeout(() => setModalAnim(true), 10); }} className="p-2 bg-white/50 dark:bg-white/10 rounded-lg text-slate-600 shadow-sm"><Edit2 size={14} /></button>
+                <button onClick={() => { setEditingId(myProfileData._id); setUserFormData({...myProfileData, password: ''}); setIsUserModalOpen(true); setTimeout(() => setModalAnim(true), 10); }} className="p-2 bg-white dark:bg-slate-800 rounded-lg text-slate-400 hover:text-blue-600 shadow-sm transition-colors"><Edit2 size={14} /></button>
               </div>
             )}
 
             <div className="flex flex-col sm:flex-row gap-3 items-center w-full lg:w-auto">
-              <div className="flex gap-1 p-1 bg-black/5 dark:bg-black/40 border border-white/20 rounded-xl shadow-inner w-full sm:w-auto justify-center">
-                <button onClick={() => setActiveTab('nodes')} className={`px-6 py-1.5 rounded-lg text-[11px] font-bold transition-all ${activeTab === 'nodes' ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-600'}`}>Nodes</button>
-                <button onClick={() => setActiveTab('users')} className={`px-6 py-1.5 rounded-lg text-[11px] font-bold transition-all ${activeTab === 'users' ? 'bg-white dark:bg-white/10 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-600'}`}>Users</button>
+              <div className="flex gap-1 p-1.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl w-full sm:w-auto justify-center">
+                <button onClick={() => setActiveTab('nodes')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'nodes' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Nodes</button>
+                <button onClick={() => setActiveTab('users')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'users' ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Users</button>
               </div>
               <div className="flex gap-2 w-full sm:w-auto">
                 <div className="relative flex-grow min-w-[200px]">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                  <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white/50 dark:bg-black/30 border border-white/50 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500/50" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold outline-none focus:border-blue-500 transition-colors" />
                 </div>
-                <button onClick={() => { setIsExportModalOpen(true); setTimeout(()=>setModalAnim(true),10); }} className="p-2 bg-white/50 dark:bg-white/10 text-emerald-600 border border-white/50 rounded-xl shadow-sm"><FileText size={16} /></button>
-                <button onClick={() => { setIsSettingsModalOpen(true); setTimeout(()=>setModalAnim(true),10); }} className="p-2 bg-white/50 dark:bg-white/10 text-slate-600 dark:text-slate-300 border border-white/50 rounded-xl shadow-sm hover:text-blue-500"><Settings size={16} /></button>
-                <button onClick={() => { if(activeTab==='nodes') {setEditingId(null); setIsAddModalOpen(true);} else {setEditingId(null); setUserFormData(defaultUser); setIsUserModalOpen(true);} setTimeout(()=>setModalAnim(true),10); }} className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-500 transition-all shadow-md min-w-[36px] flex items-center justify-center"><Plus size={18}/></button>
+                <button onClick={() => { setIsExportModalOpen(true); setTimeout(()=>setModalAnim(true),10); }} className="p-2.5 bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded-xl shadow-sm hover:bg-emerald-100 transition-colors"><FileText size={18} /></button>
+                <button onClick={() => { setIsSettingsModalOpen(true); setTimeout(()=>setModalAnim(true),10); }} className="p-2.5 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm hover:text-blue-600 transition-colors"><Settings size={18} /></button>
+                <button onClick={() => { if(activeTab==='nodes') {setEditingId(null); setIsAddModalOpen(true);} else {setEditingId(null); setUserFormData(defaultUser); setIsUserModalOpen(true);} setTimeout(()=>setModalAnim(true),10); }} className="px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-500 transition-colors shadow-md flex items-center justify-center gap-2 text-xs font-black uppercase tracking-widest"><Plus size={16}/> Add New</button>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto p-4 md:px-8 mt-6 relative z-10">
-        <div className={`bg-white/40 dark:bg-[#111827]/60 border border-white/50 dark:border-white/10 rounded-3xl overflow-hidden backdrop-blur-xl shadow-lg overflow-x-auto`}>
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-white/30 dark:bg-black/20 text-[10px] font-bold uppercase tracking-widest text-slate-500 border-b border-white/30">
-                <th className="px-8 py-4">Identity / Remote Status</th>
-                <th className="px-8 py-4">Data</th>
-                <th className="px-8 py-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/30 dark:divide-white/5">
-              {activeTab === 'nodes' ? devices.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase())).map((device) => (
-                <tr key={device._id} className="hover:bg-white/40 dark:hover:bg-white/5 transition-colors">
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-4 text-left">
-                      <div className="w-10 h-10 rounded-xl overflow-hidden bg-white/60 dark:bg-black/40 border border-white/50 flex items-center justify-center relative">
-                        {device.image ? <img src={device.image} className="w-full h-full object-cover" alt="Node" /> : <Cpu size={18} />}
-                        <div className={`absolute top-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-900 ${device.isActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-                      </div>
-                      <div>
-                        <div className="font-bold text-sm">{device.name}</div>
-                        <div className="text-[9px] font-mono text-slate-500">{device.mac} {!device.isBuzzerEnabled && <span className="text-red-500 font-bold">[Muted]</span>}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-3 font-mono text-xs font-bold">
-                      <span className="text-blue-600">{device.waterLevel?.toFixed(1) || '0.0'} cm</span>
-                    </div>
-                  </td>
-                  <td className="px-8 py-5 text-right space-x-2">
-                    <button onClick={() => { setEditingId(device._id); setIsAddModalOpen(true); setTimeout(() => setModalAnim(true), 10); }} className="p-2 bg-white/40 dark:bg-white/5 rounded-lg text-slate-500 hover:text-blue-600 transition-all border border-white/50"><Edit2 size={14} /></button>
-                    <button onClick={() => { if(confirm('Delete Node?')) fetch(`/api/devices?id=${device._id}`, {method:'DELETE'}).then(()=>fetchData()) }} className="p-2 bg-red-500/10 rounded-lg text-red-500 border border-red-500/10 shadow-sm"><Trash2 size={14} /></button>
-                  </td>
+      <div className="max-w-6xl mx-auto p-4 md:px-6 mt-8 relative z-10">
+        
+        {/* 🌟 UI ใหม่: ตารางข้อมูลพื้นหลังทึบ อ่านง่ายมาก */}
+        <div className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] shadow-xl overflow-hidden`}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 dark:bg-slate-950/50 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                  <th className="px-8 py-5">Identity / Status</th>
+                  <th className="px-8 py-5">System Details</th>
+                  <th className="px-8 py-5 text-right">Actions</th>
                 </tr>
-              )) : displayUsers.map((user) => (
-                <tr key={user._id} className="hover:bg-white/40 dark:hover:bg-white/5 transition-colors group">
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-4 text-left">
-                      <div className="w-10 h-10 rounded-full overflow-hidden bg-white/60 dark:bg-black/40 border border-white/50 flex items-center justify-center text-indigo-500 shrink-0">
-                        {user.image ? <img src={user.image} className="w-full h-full object-cover" alt="User" /> : <Users size={18} />}
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                {activeTab === 'nodes' ? devices.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase())).map((device) => (
+                  <tr key={device._id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
+                    <td className="px-8 py-5">
+                      <div className="flex items-center gap-4 text-left">
+                        <div className="w-12 h-12 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-center relative">
+                          {device.image ? <img src={device.image} className="w-full h-full object-cover" alt="Node" /> : <Cpu size={20} className="text-slate-400" />}
+                          <div className={`absolute top-0 right-0 w-3 h-3 rounded-full border-2 border-white dark:border-slate-900 ${device.isActive ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                        </div>
+                        <div>
+                          <div className="font-black text-sm text-slate-800 dark:text-white">{device.name}</div>
+                          <div className="text-[10px] font-mono text-slate-400 font-bold mt-0.5">{device.mac} {!device.isBuzzerEnabled && <span className="text-red-500 ml-1">[Muted]</span>}</div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="font-bold text-sm">{user.firstname} {user.lastname}</div>
-                        <div className="text-[10px] font-mono text-slate-500">@{user.username}</div>
+                    </td>
+                    <td className="px-8 py-5">
+                      <div className="flex flex-col gap-1">
+                        <div className="text-[11px] font-black text-slate-500 uppercase flex items-center gap-2">
+                           <span className="text-orange-500">Warn: {device.warningThreshold ?? 5}cm</span> | 
+                           <span className="text-red-500">Crit: {device.criticalThreshold ?? 10}cm</span>
+                        </div>
+                        <div className="text-sm font-black text-blue-600 dark:text-blue-400">Current: {device.waterLevel?.toFixed(1) || '0.0'} cm</div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-8 py-5">
-                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase border ${user.role==='admin'?'bg-purple-100/50 text-purple-600 border-purple-200/50':'bg-indigo-100/50 text-indigo-600 border-indigo-200/50'}`}>{user.role}</span>
-                  </td>
-                  <td className="px-8 py-5 text-right space-x-2">
-                    <button onClick={() => { setEditingId(user._id); setUserFormData({...user, password: ''}); setIsUserModalOpen(true); setTimeout(() => setModalAnim(true), 10); }} className="p-2 bg-white/40 dark:bg-white/5 rounded-lg text-slate-500 hover:text-blue-600 transition-all border border-white/50"><Edit2 size={14} /></button>
-                    <button onClick={() => handleDeleteUser(user._id)} className="p-2 bg-red-500/10 rounded-lg text-red-500 border border-red-500/20"><Trash2 size={14} /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    </td>
+                    <td className="px-8 py-5 text-right space-x-2">
+                      <button onClick={() => { setEditingId(device._id); setIsAddModalOpen(true); setTimeout(() => setModalAnim(true), 10); }} className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-xl text-slate-500 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
+                      <button onClick={() => { if(confirm('Delete Node?')) fetch(`/api/devices?id=${device._id}`, {method:'DELETE'}).then(()=>fetchData()) }} className="p-2.5 bg-red-50 dark:bg-red-500/10 rounded-xl text-red-500 hover:bg-red-100 transition-colors"><Trash2 size={16} /></button>
+                    </td>
+                  </tr>
+                )) : displayUsers.map((user) => (
+                  <tr key={user._id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
+                    <td className="px-8 py-5">
+                      <div className="flex items-center gap-4 text-left">
+                        <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-center text-indigo-500 shrink-0">
+                          {user.image ? <img src={user.image} className="w-full h-full object-cover" alt="User" /> : <Users size={20} />}
+                        </div>
+                        <div>
+                          <div className="font-black text-sm text-slate-800 dark:text-white">{user.firstname} {user.lastname}</div>
+                          <div className="text-[10px] font-mono text-slate-400 font-bold mt-0.5">@{user.username}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-8 py-5">
+                      <span className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${user.role==='admin'?'bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400':'bg-indigo-100 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400'}`}>{user.role}</span>
+                    </td>
+                    <td className="px-8 py-5 text-right space-x-2">
+                      <button onClick={() => { setEditingId(user._id); setUserFormData({...user, password: ''}); setIsUserModalOpen(true); setTimeout(() => setModalAnim(true), 10); }} className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-xl text-slate-500 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
+                      <button onClick={() => handleDeleteUser(user._id)} className="p-2.5 bg-red-50 dark:bg-red-500/10 rounded-xl text-red-500 hover:bg-red-100 transition-colors"><Trash2 size={16} /></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
+      {/* Modals ใช้งานเหมือนเดิม */}
       <NodeModal 
         key={editingId || 'new'} 
         isOpen={isAddModalOpen}
@@ -389,40 +381,40 @@ export default function AdminPage() {
 
       {isUserModalOpen && (
         <div className={`fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300 ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
-          <div className={`bg-white/80 dark:bg-[#1e2330]/80 backdrop-blur-2xl rounded-3xl shadow-2xl w-full max-w-md border border-white/50 transform transition-all duration-300 ${modalAnim ? 'scale-100' : 'scale-95'} overflow-hidden`}>
-            <div className="px-6 py-4 border-b border-black/5 flex justify-between items-center bg-white/30 dark:bg-black/10">
-              <h3 className="font-bold text-xs">{editingId ? 'Edit User Profile' : 'Register New User'}</h3>
-              <button onClick={closeModal} className="text-slate-400 hover:text-red-500"><XCircle size={18}/></button>
+          <div className={`bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800 transform transition-all duration-300 ${modalAnim ? 'scale-100' : 'scale-95'} overflow-hidden`}>
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-950/50">
+              <h3 className="font-black text-xs uppercase tracking-widest text-slate-500">{editingId ? 'Edit User Profile' : 'Register New User'}</h3>
+              <button onClick={closeModal} className="text-slate-400 hover:text-red-500 transition-colors"><XCircle size={20}/></button>
             </div>
             <form onSubmit={handleUserSubmit} className="p-8 space-y-4 max-h-[75vh] overflow-y-auto">
               <div className="flex flex-col items-center gap-3">
-                <div className="w-20 h-20 rounded-full overflow-hidden bg-white/80 dark:bg-black/50 border flex items-center justify-center relative group">
+                <div className="w-24 h-24 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-950 border-2 border-slate-200 dark:border-slate-800 flex items-center justify-center relative group">
                   {userFormData.image ? <img src={userFormData.image} className="w-full h-full object-cover" /> : <Users size={32} className="text-slate-400" />}
                 </div>
-                <input type="file" accept="image/*" onChange={(e) => handleImageProcess(e, 'user')} className="text-[10px]" />
+                <input type="file" accept="image/*" onChange={(e) => handleImageProcess(e, 'user')} className="text-[10px] font-bold text-slate-500" />
               </div>
-              <input required type="text" placeholder="First Name" value={userFormData.firstname} onChange={e => setUserFormData({...userFormData, firstname: e.target.value})} className="w-full p-3 bg-white/50 dark:bg-black/30 border rounded-xl outline-none text-sm" />
-              <input required type="text" placeholder="Last Name" value={userFormData.lastname} onChange={e => setUserFormData({...userFormData, lastname: e.target.value})} className="w-full p-3 bg-white/50 dark:bg-black/30 border rounded-xl outline-none text-sm" />
-              <input required type="text" placeholder="Username" value={userFormData.username} onChange={e => setUserFormData({...userFormData, username: e.target.value})} className="w-full p-3 bg-white/50 dark:bg-black/30 border rounded-xl outline-none text-sm" />
-              <input type="password" placeholder={editingId ? "New Password (Leave blank)" : "Password"} value={userFormData.password} onChange={e => setUserFormData({...userFormData, password: e.target.value})} className="w-full p-3 bg-white/50 dark:bg-black/30 border rounded-xl outline-none text-sm" />
+              <input required type="text" placeholder="First Name" value={userFormData.firstname} onChange={e => setUserFormData({...userFormData, firstname: e.target.value})} className="w-full p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl outline-none text-sm font-bold focus:border-blue-500 transition-colors" />
+              <input required type="text" placeholder="Last Name" value={userFormData.lastname} onChange={e => setUserFormData({...userFormData, lastname: e.target.value})} className="w-full p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl outline-none text-sm font-bold focus:border-blue-500 transition-colors" />
+              <input required type="text" placeholder="Username" value={userFormData.username} onChange={e => setUserFormData({...userFormData, username: e.target.value})} className="w-full p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl outline-none text-sm font-bold focus:border-blue-500 transition-colors" />
+              <input type="password" placeholder={editingId ? "New Password (Leave blank)" : "Password"} value={userFormData.password} onChange={e => setUserFormData({...userFormData, password: e.target.value})} className="w-full p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl outline-none text-sm font-bold focus:border-blue-500 transition-colors" />
               
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-1">System Role</label>
                 <div className="relative">
                   <select 
                     value={userFormData.role} 
                     onChange={e => setUserFormData({...userFormData, role: e.target.value})}
-                    className="w-full p-3 bg-white/50 dark:bg-black/30 border rounded-xl outline-none text-sm appearance-none font-bold"
+                    className="w-full p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl outline-none text-sm appearance-none font-bold focus:border-blue-500 transition-colors"
                   >
                     <option value="user">User (Standard)</option>
                     <option value="admin">Admin (Full Control)</option>
                     <option value="viewer">Viewer (Read Only)</option>
                   </select>
-                  <UserCog size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <UserCog size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
               </div>
 
-              <button disabled={isSaving} className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl shadow-md hover:bg-blue-500 flex justify-center">
+              <button disabled={isSaving} className="w-full py-4 mt-4 bg-blue-600 text-white font-black uppercase tracking-widest rounded-xl shadow-lg hover:bg-blue-500 flex justify-center transition-colors">
                 {isSaving ? <Loader2 className="animate-spin" size={20} /> : 'Save User'}
               </button>
             </form>
@@ -432,88 +424,55 @@ export default function AdminPage() {
 
       {isExportModalOpen && (
         <div className={`fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300 ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
-          <div className="bg-white/80 dark:bg-[#1e2330]/80 backdrop-blur-2xl rounded-3xl shadow-2xl w-full max-w-sm border p-8 space-y-6 text-center transform transition-all">
+          <div className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-sm border border-slate-200 dark:border-slate-800 p-8 space-y-6 text-center transform transition-all">
              <Calendar size={48} className="mx-auto text-blue-500 mb-2" />
-             <h3 className="font-bold text-lg">Export Flood Report</h3>
-             <select value={exportDays} onChange={e => setExportDays(Number(e.target.value))} className="w-full p-3 rounded-xl bg-white/50 border border-white/50 outline-none font-bold text-center">
+             <h3 className="font-black text-lg text-slate-800 dark:text-white">Export Flood Report</h3>
+             <select value={exportDays} onChange={e => setExportDays(Number(e.target.value))} className="w-full p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 outline-none font-bold text-center text-slate-700 dark:text-slate-200">
                 <option value={1}>Last 24 Hours</option>
                 <option value={7}>Last 7 Days</option>
                 <option value={30}>Last 30 Days</option>
              </select>
-             <button onClick={executeExportPDF} disabled={isExporting} className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl shadow-lg hover:bg-emerald-500 active:scale-95 transition-all">
+             <button onClick={executeExportPDF} disabled={isExporting} className="w-full py-3.5 bg-emerald-500 text-white font-black uppercase tracking-widest rounded-xl shadow-lg hover:bg-emerald-400 active:scale-95 transition-all">
                 {isExporting ? <Loader2 className="animate-spin mx-auto" /> : 'Download PDF Report'}
              </button>
-             <button onClick={closeModal} className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors">Cancel</button>
+             <button onClick={closeModal} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors">Cancel</button>
           </div>
         </div>
       )}
 
-      {/* 🌟 หน้าต่างตั้งค่าระบบ (อัปเกรดใส่ระดับน้ำ) */}
+      {/* 🌟 หน้าต่างตั้งค่าระบบ (ลบช่องกรอกน้ำออกแล้ว ให้เหลือแค่เปิดปิดระบบ) */}
       {isSettingsModalOpen && (
         <div className={`fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300 ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
-          <div className={`bg-white dark:bg-[#1e2330] rounded-3xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800 transform transition-all duration-300 ${modalAnim ? 'scale-100' : 'scale-95'} overflow-hidden p-6`}>
+          <div className={`bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-sm border border-slate-200 dark:border-slate-800 transform transition-all duration-300 ${modalAnim ? 'scale-100' : 'scale-95'} overflow-hidden p-8`}>
             
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-bold text-lg flex items-center gap-2"><Settings size={20} className="text-blue-500" /> System Settings</h3>
-              <button onClick={closeModal} className="text-slate-400 hover:text-red-500"><XCircle size={20}/></button>
+            <div className="flex justify-between items-center mb-8">
+              <h3 className="font-black text-lg flex items-center gap-2 text-slate-800 dark:text-white"><Settings size={20} className="text-blue-500" /> System Settings</h3>
+              <button onClick={closeModal} className="text-slate-400 hover:text-red-500 transition-colors"><XCircle size={20}/></button>
             </div>
             
             <div className="space-y-6">
-              {/* ตั้งค่าฮาร์ดแวร์เดิม */}
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-800">
                 <div>
-                  <h4 className="font-bold text-sm">ระบบการทำงาน</h4>
-                  <p className="text-xs text-slate-500 mt-1">เปิด-ปิด การรับส่งข้อมูลของอุปกรณ์</p>
+                  <h4 className="font-bold text-sm text-slate-800 dark:text-white">ระบบการทำงานหลัก</h4>
+                  <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase">เปิด-ปิด รับส่งข้อมูล</p>
                 </div>
-                <button onClick={() => handleToggleSettings('system')} className={`w-12 h-6 rounded-full transition-colors relative ${systemSettings.systemOn ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'}`}>
-                  <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${systemSettings.systemOn ? 'translate-x-7' : 'translate-x-1'}`} />
+                <button onClick={() => handleToggleSettings('system')} className={`w-14 h-7 rounded-full transition-colors relative shadow-inner ${systemSettings.systemOn ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-700'}`}>
+                  <div className={`w-5 h-5 bg-white rounded-full absolute top-1 shadow-md transition-transform ${systemSettings.systemOn ? 'translate-x-8' : 'translate-x-1'}`} />
                 </button>
               </div>
-              <div className="flex justify-between items-center">
+
+              <div className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-800">
                 <div>
-                  <h4 className="font-bold text-sm">เสียงแจ้งเตือน (Buzzer)</h4>
-                  <p className="text-xs text-slate-500 mt-1">เปิด-ปิด เสียงร้องเตือนที่ตัวอุปกรณ์</p>
+                  <h4 className="font-bold text-sm text-slate-800 dark:text-white">ระบบเสียงเตือน</h4>
+                  <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase">Buzzer Control</p>
                 </div>
-                <button onClick={() => handleToggleSettings('buzzer')} className={`w-12 h-6 rounded-full transition-colors relative ${systemSettings.buzzerOn ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'}`}>
-                  <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${systemSettings.buzzerOn ? 'translate-x-7' : 'translate-x-1'}`} />
+                <button onClick={() => handleToggleSettings('buzzer')} className={`w-14 h-7 rounded-full transition-colors relative shadow-inner ${systemSettings.buzzerOn ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-700'}`}>
+                  <div className={`w-5 h-5 bg-white rounded-full absolute top-1 shadow-md transition-transform ${systemSettings.buzzerOn ? 'translate-x-8' : 'translate-x-1'}`} />
                 </button>
               </div>
-
-              {/* 🌟 ฟีเจอร์ใหม่: ตั้งค่าเกณฑ์น้ำ */}
-              <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800 space-y-4">
-                <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
-                  <AlertTriangle size={16} className="text-orange-500" /> เกณฑ์แจ้งเตือนระดับน้ำ (ซม.)
-                </h4>
-
-                <div className="flex items-center justify-between gap-4">
-                  <label className="text-xs text-slate-500 font-bold w-1/2">🟠 เฝ้าระวัง (Warning)</label>
-                  <input
-                    type="number" step="0.1" value={warningLevel}
-                    onChange={(e) => setWarningLevel(Number(e.target.value))}
-                    className="w-1/2 p-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold outline-none text-right focus:border-orange-500 transition-colors"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <label className="text-xs text-slate-500 font-bold w-1/2">🔴 อันตราย (Critical)</label>
-                  <input
-                    type="number" step="0.1" value={criticalLevel}
-                    onChange={(e) => setCriticalLevel(Number(e.target.value))}
-                    className="w-1/2 p-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold outline-none text-right focus:border-red-500 transition-colors"
-                  />
-                </div>
-
-                <button 
-                  onClick={handleSaveThresholds} 
-                  className={`w-full py-3 font-bold rounded-xl transition-all mt-4 flex items-center justify-center gap-2 ${isSettingsSaved ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-500/20'}`}
-                >
-                  {isSettingsSaved ? <CheckCircle2 size={16} /> : <Save size={16} />}
-                  {isSettingsSaved ? 'บันทึกสำเร็จ' : 'บันทึกเกณฑ์น้ำ'}
-                </button>
-              </div>
-
             </div>
-            <button onClick={closeModal} className="w-full mt-6 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">ปิดหน้าต่าง</button>
+            
+            <button onClick={closeModal} className="w-full mt-8 py-3.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-black uppercase tracking-widest text-[11px] rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">Close Menu</button>
           </div>
         </div>
       )}

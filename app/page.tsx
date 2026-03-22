@@ -30,29 +30,8 @@ export default function Home() {
   const [timeframe, setTimeframe] = useState('day');
   const { setTheme, resolvedTheme } = useTheme();
 
-  // 🌟 [PHASE 3] ดึงค่าเกณฑ์จาก LocalStorage (ถ้าไม่มีให้ใช้ 5 กับ 10 เป็นค่าเริ่มต้น)
-  const [thresholds, setThresholds] = useState({ warning: 5.0, critical: 10.0 });
-
   useEffect(() => { 
     setIsMounted(true); 
-    
-    // โหลดค่าเกณฑ์น้ำ
-    const loadThresholds = () => {
-      const savedWarning = localStorage.getItem('flood_warning_level');
-      const savedCritical = localStorage.getItem('flood_critical_level');
-      if (savedWarning || savedCritical) {
-        setThresholds({
-          warning: savedWarning ? Number(savedWarning) : 5.0,
-          critical: savedCritical ? Number(savedCritical) : 10.0
-        });
-      }
-    };
-    
-    loadThresholds();
-
-    // เผื่อกรณี User กลับมาจากหน้า Admin ให้โหลดค่าใหม่
-    window.addEventListener('focus', loadThresholds);
-    return () => window.removeEventListener('focus', loadThresholds);
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -79,7 +58,6 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // 🌟 สูตร Calibrate 62.0 
   const calculateWater = useCallback((level: any) => {
     const raw = Number(level ?? 62.0); 
     let val = (62.0 - raw); 
@@ -87,27 +65,41 @@ export default function Home() {
     return val < 0 ? 0 : (val > 40 ? 40 : val); 
   }, []);
 
-  // กรอง Logs ตามอุปกรณ์ที่เลือก (Check ความปลอดภัย)
   const activeLogs = useMemo(() => {
     if (!Array.isArray(logs) || logs.length === 0) return [];
     return selectedDeviceMac === 'ALL' ? logs : logs.filter(l => (l.mac || l.device_id) === selectedDeviceMac);
   }, [logs, selectedDeviceMac]);
 
-  // คำนวณระดับน้ำล่าสุด
   const waterInTank = useMemo(() => {
     if (activeLogs.length === 0) return 0;
     const lastEntry = activeLogs[activeLogs.length - 1];
     return calculateWater(lastEntry?.level);
   }, [activeLogs, calculateWater]);
 
-  // 🌟 สถานะระบบ (เปลี่ยนจากเลขฟิกซ์ตายตัว มาใช้ค่า thresholds จาก Admin แทน)
-  const status = useMemo(() => {
-    if (waterInTank >= thresholds.critical) return { label: "CRITICAL", color: "text-red-500", bg: "bg-red-500", icon: <ShieldAlert size={24}/>, border: "border-red-500", glow: "shadow-red-500/20" };
-    if (waterInTank >= thresholds.warning) return { label: "WARNING", color: "text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle size={24}/>, border: "border-orange-500", glow: "shadow-orange-500/20" };
-    return { label: "STABLE", color: "text-emerald-500", bg: "bg-emerald-500", icon: <CheckCircle2 size={24}/>, border: "border-emerald-500", glow: "shadow-emerald-500/20" };
-  }, [waterInTank, thresholds]);
+  // 🌟 [PHASE 3: แยกรายอุปกรณ์] ดึงค่าเกณฑ์เตือนภัยของ "อุปกรณ์ที่เลือกอยู่"
+  const activeThresholds = useMemo(() => {
+    // 1. ถ้าเลือกดูเฉพาะตัวใดตัวหนึ่ง ให้เอาค่าของตัวนั้นมาใช้
+    if (selectedDeviceMac !== 'ALL') {
+      const d = devices.find(d => d.mac === selectedDeviceMac);
+      return { warning: d?.warningThreshold ?? 5.0, critical: d?.criticalThreshold ?? 10.0 };
+    }
+    // 2. ถ้าดูหน้าจอรวม (ALL) ให้ยึดตามค่าเกณฑ์ของอุปกรณ์ตัวล่าสุดที่ส่งข้อมูลมา
+    if (activeLogs.length > 0) {
+      const latestLog = activeLogs[activeLogs.length - 1];
+      const d = devices.find(d => d.mac === (latestLog.mac || latestLog.device_id));
+      return { warning: d?.warningThreshold ?? 5.0, critical: d?.criticalThreshold ?? 10.0 };
+    }
+    return { warning: 5.0, critical: 10.0 }; // ค่าพื้นฐาน
+  }, [selectedDeviceMac, devices, activeLogs]);
 
-  // ข้อมูลเชิงลึก (ป้องกัน Error Math.max และ Date)
+  // สถานะระบบ (ใช้ activeThresholds แยกตามอุปกรณ์)
+  const status = useMemo(() => {
+    if (waterInTank >= activeThresholds.critical) return { label: "CRITICAL", color: "text-red-500", bg: "bg-red-500", icon: <ShieldAlert size={24}/>, border: "border-red-500", glow: "shadow-red-500/20" };
+    if (waterInTank >= activeThresholds.warning) return { label: "WARNING", color: "text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle size={24}/>, border: "border-orange-500", glow: "shadow-orange-500/20" };
+    return { label: "STABLE", color: "text-emerald-500", bg: "bg-emerald-500", icon: <CheckCircle2 size={24}/>, border: "border-emerald-500", glow: "shadow-emerald-500/20" };
+  }, [waterInTank, activeThresholds]);
+
+  // ข้อมูลเชิงลึก 
   const insights = useMemo(() => {
     if (activeLogs.length === 0) {
       return { maxWater: 0, avgSignal: 0, rateOfChange: 0, timeToFlood: null, lastUpdate: 'Waiting...' };
@@ -123,9 +115,8 @@ export default function Home() {
       const rate = hourDiff > 0 ? (calculateWater(latestLog.level) - calculateWater(oldLog.level)) / hourDiff : 0;
 
       let timeStr = null;
-      // 🌟 อัปเดตสูตรคำนวณเวลาท่วม ให้ใช้ค่า Critical ใหม่
-      if (rate > 0 && waterInTank < thresholds.critical) {
-        const mins = Math.round(((thresholds.critical - waterInTank) / rate) * 60);
+      if (rate > 0 && waterInTank < activeThresholds.critical) {
+        const mins = Math.round(((activeThresholds.critical - waterInTank) / rate) * 60);
         timeStr = mins > 0 ? `${mins} นาที` : "เร็วๆ นี้";
       }
 
@@ -139,41 +130,29 @@ export default function Home() {
     } catch (e) {
       return { maxWater: 0, avgSignal: 0, rateOfChange: 0, timeToFlood: null, lastUpdate: 'Error' };
     }
-  }, [activeLogs, calculateWater, waterInTank, thresholds]);
+  }, [activeLogs, calculateWater, waterInTank, activeThresholds]);
 
-
-  // 🌟 [PHASE 1] ฟังก์ชัน Export ข้อมูลเป็นไฟล์ Excel (CSV)
   const exportToCSV = () => {
     if (!activeLogs || activeLogs.length === 0) {
       alert("ไม่มีข้อมูลสำหรับดาวน์โหลดครับ");
       return;
     }
-
-    // สร้างหัวตาราง (Headers)
     let csvContent = "วันที่,เวลา,อุปกรณ์ (MAC),ระดับน้ำ (cm),อุณหภูมิ (C),ความชื้น (%)\n";
-
-    // วนลูปเอาข้อมูลมาใส่ทีละบรรทัด (ใช้ activeLogs เพื่อให้ได้ข้อมูลตามอุปกรณ์ที่เลือกอยู่)
     activeLogs.forEach((log: any) => {
       const date = new Date(log.createdAt).toLocaleDateString('th-TH');
       const time = new Date(log.createdAt).toLocaleTimeString('th-TH');
       const deviceMac = log.mac || log.device_id || "Unknown";
-      
-      // คำนวณระดับน้ำด้วยสูตร Calibrate
       const rawLevel = Number(log.level ?? 62.0);
       let calcLevel = (62.0 - rawLevel);
       if (rawLevel <= 0.5 || rawLevel > 75) calcLevel = 0;
       if (calcLevel < 0) calcLevel = 0;
       if (calcLevel > 40) calcLevel = 40;
-      
       const level = calcLevel.toFixed(2);
       const temp = log.temperature ? Number(log.temperature).toFixed(1) : "0.0";
       const hum = log.humidity || log.air_humidity ? Number(log.humidity || log.air_humidity).toFixed(1) : "0.0";
-
       csvContent += `${date},${time},${deviceMac},${level},${temp},${hum}\n`;
     });
-
-    // สร้างไฟล์และสั่งดาวน์โหลด
-    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' }); // \uFEFF ช่วยให้ Excel อ่านภาษาไทยได้สมบูรณ์
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -185,10 +164,8 @@ export default function Home() {
     document.body.removeChild(link);
   };
 
-
   if (!isMounted) return null;
 
-  // ถ้ายังดึงข้อมูลครั้งแรกไม่เสร็จ ให้โชว์หน้า Loading แทนการปล่อยให้ Script ทำงานจนล่ม
   if (logs.length === 0 && devices.length === 0) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-[#020617] flex flex-col items-center justify-center gap-4">
@@ -201,6 +178,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#F1F5F9] dark:bg-[#020617] transition-all duration-500 font-sans pb-10">
       <header className="sticky top-0 z-[100] bg-white/70 dark:bg-slate-950/70 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 px-8 py-4 print:hidden">
+        {/* ... (Header เหมือนเดิม) ... */}
         <div className="max-w-[1600px] mx-auto flex justify-between items-center">
           <div className="flex items-center gap-6">
             <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl text-white shadow-lg"><Waves size={24}/></div>
@@ -268,7 +246,6 @@ export default function Home() {
               </div>
            </div>
            
-           {/* 🌟 ปรับปรุงส่วน Records เพิ่มปุ่ม Download Excel */}
            <div className="xl:col-span-5 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden flex flex-col h-[532px]">
               <div className="p-4 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/50">
                  <div>
@@ -278,17 +255,14 @@ export default function Home() {
                    <span className="text-[10px] font-bold text-slate-400 mt-1 block">Sync: {insights.lastUpdate}</span>
                  </div>
                  
-                 {/* ปุ่ม Export to CSV */}
-                 <button 
-                   onClick={exportToCSV}
-                   className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-emerald-500/30 active:scale-95"
-                 >
+                 <button onClick={exportToCSV} className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-emerald-500/30 active:scale-95">
                    <Download size={14} /> <span className="hidden sm:inline">Export CSV</span>
                  </button>
               </div>
 
               <div className="flex-grow overflow-auto">
-                 <RecentLogs logs={activeLogs} />
+                 {/* 🌟 ส่งตัวแปร devices เข้าไปในตารางด้วย เพื่อให้มันรู้ค่าเกณฑ์ของแต่ละตัว */}
+                 <RecentLogs logs={activeLogs} devices={devices} /> 
               </div>
            </div>
         </div>
