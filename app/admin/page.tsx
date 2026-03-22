@@ -7,11 +7,12 @@ import { useTheme } from 'next-themes';
 import { 
   ArrowLeft, Trash2, XCircle, Search, Cpu, 
   Plus, Edit2, Users, ShieldCheck, Image as ImageIcon, 
-  Loader2, FileText, Calendar, Sun, Moon, Settings, UserCog
+  Loader2, FileText, Calendar, Sun, Moon, Settings, UserCog,
+  Save, AlertTriangle, CheckCircle2 // 🌟 เพิ่มไอคอนสำหรับฟีเจอร์ใหม่
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import * as htmlToImage from 'html-to-image'; // 🌟 ใช้ html-to-image ถ่ายรูปกราฟ
+import * as htmlToImage from 'html-to-image'; 
 
 // 🌟 Import Component
 import NodeModal from '@/components/NodeModal'; 
@@ -39,6 +40,11 @@ export default function AdminPage() {
   const [systemSettings, setSystemSettings] = useState({ systemOn: true, buzzerOn: true });
   const [exportLogs, setExportLogs] = useState<any[]>([]); 
 
+  // 🌟 [PHASE 3] ตัวแปรเก็บค่าเกณฑ์ระดับน้ำ
+  const [warningLevel, setWarningLevel] = useState<number>(5.0);
+  const [criticalLevel, setCriticalLevel] = useState<number>(10.0);
+  const [isSettingsSaved, setIsSettingsSaved] = useState(false);
+
   const defaultDevice = { 
     name: '', mac: '', location: '', type: 'ESP32', image: '', 
     warningThreshold: 3.0, criticalThreshold: 7.0, lat: 14.8824, lng: 103.4936,
@@ -54,6 +60,13 @@ export default function AdminPage() {
     setIsMounted(true); 
     fetchData();
     fetchSettings();
+    
+    // 🌟 โหลดค่าเกณฑ์น้ำจาก LocalStorage ตอนเปิดหน้า
+    const savedWarning = localStorage.getItem('flood_warning_level');
+    const savedCritical = localStorage.getItem('flood_critical_level');
+    if (savedWarning) setWarningLevel(Number(savedWarning));
+    if (savedCritical) setCriticalLevel(Number(savedCritical));
+
     setTimeout(() => setShowUI(true), 100);
   }, []);
 
@@ -74,6 +87,14 @@ export default function AdminPage() {
       if (devRes.ok) setDevices(await devRes.json());
       if (userRes.ok) setUsers(await userRes.json());
     } catch (e) { console.error(e); }
+  };
+
+  // 🌟 ฟังก์ชันบันทึกระดับน้ำ
+  const handleSaveThresholds = () => {
+    localStorage.setItem('flood_warning_level', warningLevel.toString());
+    localStorage.setItem('flood_critical_level', criticalLevel.toString());
+    setIsSettingsSaved(true);
+    setTimeout(() => setIsSettingsSaved(false), 3000);
   };
 
   const executeExportPDF = async () => {
@@ -385,7 +406,6 @@ export default function AdminPage() {
               <input required type="text" placeholder="Username" value={userFormData.username} onChange={e => setUserFormData({...userFormData, username: e.target.value})} className="w-full p-3 bg-white/50 dark:bg-black/30 border rounded-xl outline-none text-sm" />
               <input type="password" placeholder={editingId ? "New Password (Leave blank)" : "Password"} value={userFormData.password} onChange={e => setUserFormData({...userFormData, password: e.target.value})} className="w-full p-3 bg-white/50 dark:bg-black/30 border rounded-xl outline-none text-sm" />
               
-              {/* 🎯 [เพิ่มใหม่] ส่วนกำหนด ROLE (Roll) */}
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-1">System Role</label>
                 <div className="relative">
@@ -428,14 +448,18 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* 🌟 หน้าต่างตั้งค่าระบบ (อัปเกรดใส่ระดับน้ำ) */}
       {isSettingsModalOpen && (
         <div className={`fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300 ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
           <div className={`bg-white dark:bg-[#1e2330] rounded-3xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800 transform transition-all duration-300 ${modalAnim ? 'scale-100' : 'scale-95'} overflow-hidden p-6`}>
+            
             <div className="flex justify-between items-center mb-6">
-              <h3 className="font-bold text-lg">Device Management</h3>
+              <h3 className="font-bold text-lg flex items-center gap-2"><Settings size={20} className="text-blue-500" /> System Settings</h3>
               <button onClick={closeModal} className="text-slate-400 hover:text-red-500"><XCircle size={20}/></button>
             </div>
+            
             <div className="space-y-6">
+              {/* ตั้งค่าฮาร์ดแวร์เดิม */}
               <div className="flex justify-between items-center">
                 <div>
                   <h4 className="font-bold text-sm">ระบบการทำงาน</h4>
@@ -454,8 +478,42 @@ export default function AdminPage() {
                   <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${systemSettings.buzzerOn ? 'translate-x-7' : 'translate-x-1'}`} />
                 </button>
               </div>
+
+              {/* 🌟 ฟีเจอร์ใหม่: ตั้งค่าเกณฑ์น้ำ */}
+              <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800 space-y-4">
+                <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
+                  <AlertTriangle size={16} className="text-orange-500" /> เกณฑ์แจ้งเตือนระดับน้ำ (ซม.)
+                </h4>
+
+                <div className="flex items-center justify-between gap-4">
+                  <label className="text-xs text-slate-500 font-bold w-1/2">🟠 เฝ้าระวัง (Warning)</label>
+                  <input
+                    type="number" step="0.1" value={warningLevel}
+                    onChange={(e) => setWarningLevel(Number(e.target.value))}
+                    className="w-1/2 p-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold outline-none text-right focus:border-orange-500 transition-colors"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <label className="text-xs text-slate-500 font-bold w-1/2">🔴 อันตราย (Critical)</label>
+                  <input
+                    type="number" step="0.1" value={criticalLevel}
+                    onChange={(e) => setCriticalLevel(Number(e.target.value))}
+                    className="w-1/2 p-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold outline-none text-right focus:border-red-500 transition-colors"
+                  />
+                </div>
+
+                <button 
+                  onClick={handleSaveThresholds} 
+                  className={`w-full py-3 font-bold rounded-xl transition-all mt-4 flex items-center justify-center gap-2 ${isSettingsSaved ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-500/20'}`}
+                >
+                  {isSettingsSaved ? <CheckCircle2 size={16} /> : <Save size={16} />}
+                  {isSettingsSaved ? 'บันทึกสำเร็จ' : 'บันทึกเกณฑ์น้ำ'}
+                </button>
+              </div>
+
             </div>
-            <button onClick={closeModal} className="w-full mt-8 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">ปิดหน้าต่าง</button>
+            <button onClick={closeModal} className="w-full mt-6 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">ปิดหน้าต่าง</button>
           </div>
         </div>
       )}

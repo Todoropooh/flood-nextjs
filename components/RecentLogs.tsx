@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Clock } from 'lucide-react';
 
 interface Log {
@@ -12,6 +12,29 @@ interface Log {
 }
 
 export default function RecentLogs({ logs }: { logs: Log[] }) {
+  // 🌟 [PHASE 3] เพิ่ม State สำหรับเก็บค่าเกณฑ์น้ำ
+  const [thresholds, setThresholds] = useState({ warning: 5.0, critical: 10.0 });
+
+  useEffect(() => {
+    // ฟังก์ชันโหลดค่าเกณฑ์น้ำจากความจำเบราว์เซอร์
+    const loadThresholds = () => {
+      const savedWarning = localStorage.getItem('flood_warning_level');
+      const savedCritical = localStorage.getItem('flood_critical_level');
+      if (savedWarning || savedCritical) {
+        setThresholds({
+          warning: savedWarning ? Number(savedWarning) : 5.0,
+          critical: savedCritical ? Number(savedCritical) : 10.0
+        });
+      }
+    };
+
+    loadThresholds(); // โหลดครั้งแรกตอนเปิดตาราง
+
+    // อัปเดตตารางทันทีถ้า User สลับแท็บกลับมาจากหน้า Admin
+    window.addEventListener('focus', loadThresholds);
+    return () => window.removeEventListener('focus', loadThresholds);
+  }, []);
+
   return (
     <div className="overflow-y-auto h-full w-full">
       <table className="w-full text-sm text-left">
@@ -34,14 +57,14 @@ export default function RecentLogs({ logs }: { logs: Log[] }) {
             if (waterLevel > 40) waterLevel = 40;
             if (waterLevel < 0) waterLevel = 0;
 
-            // ✅ 2. ปรับเกณฑ์สีใหม่ (แดง >= 10, ส้ม >= 5)
+            // ✅ 2. ปรับเกณฑ์สีใหม่ (ดึงตัวเลขจากหน้าตั้งค่า Admin มาใช้แล้ว!)
             let displayStatus = 'ปลอดภัย';
             let statusClasses = 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400';
 
-            if (waterLevel >= 10.0) { // 🔴 อันตราย
+            if (waterLevel >= thresholds.critical) { // 🔴 อันตราย (ใช้ค่า Dynamic)
               displayStatus = 'อันตราย';
               statusClasses = 'bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-400';
-            } else if (waterLevel >= 5.0) { // 🟠 เฝ้าระวัง
+            } else if (waterLevel >= thresholds.warning) { // 🟠 เฝ้าระวัง (ใช้ค่า Dynamic)
               displayStatus = 'เฝ้าระวัง';
               statusClasses = 'bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400';
             }

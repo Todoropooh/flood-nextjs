@@ -30,8 +30,29 @@ export default function Home() {
   const [timeframe, setTimeframe] = useState('day');
   const { setTheme, resolvedTheme } = useTheme();
 
+  // 🌟 [PHASE 3] ดึงค่าเกณฑ์จาก LocalStorage (ถ้าไม่มีให้ใช้ 5 กับ 10 เป็นค่าเริ่มต้น)
+  const [thresholds, setThresholds] = useState({ warning: 5.0, critical: 10.0 });
+
   useEffect(() => { 
     setIsMounted(true); 
+    
+    // โหลดค่าเกณฑ์น้ำ
+    const loadThresholds = () => {
+      const savedWarning = localStorage.getItem('flood_warning_level');
+      const savedCritical = localStorage.getItem('flood_critical_level');
+      if (savedWarning || savedCritical) {
+        setThresholds({
+          warning: savedWarning ? Number(savedWarning) : 5.0,
+          critical: savedCritical ? Number(savedCritical) : 10.0
+        });
+      }
+    };
+    
+    loadThresholds();
+
+    // เผื่อกรณี User กลับมาจากหน้า Admin ให้โหลดค่าใหม่
+    window.addEventListener('focus', loadThresholds);
+    return () => window.removeEventListener('focus', loadThresholds);
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -79,12 +100,12 @@ export default function Home() {
     return calculateWater(lastEntry?.level);
   }, [activeLogs, calculateWater]);
 
-  // สถานะระบบ
+  // 🌟 สถานะระบบ (เปลี่ยนจากเลขฟิกซ์ตายตัว มาใช้ค่า thresholds จาก Admin แทน)
   const status = useMemo(() => {
-    if (waterInTank >= 10) return { label: "CRITICAL", color: "text-red-500", bg: "bg-red-500", icon: <ShieldAlert size={24}/>, border: "border-red-500", glow: "shadow-red-500/20" };
-    if (waterInTank >= 5) return { label: "WARNING", color: "text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle size={24}/>, border: "border-orange-500", glow: "shadow-orange-500/20" };
+    if (waterInTank >= thresholds.critical) return { label: "CRITICAL", color: "text-red-500", bg: "bg-red-500", icon: <ShieldAlert size={24}/>, border: "border-red-500", glow: "shadow-red-500/20" };
+    if (waterInTank >= thresholds.warning) return { label: "WARNING", color: "text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle size={24}/>, border: "border-orange-500", glow: "shadow-orange-500/20" };
     return { label: "STABLE", color: "text-emerald-500", bg: "bg-emerald-500", icon: <CheckCircle2 size={24}/>, border: "border-emerald-500", glow: "shadow-emerald-500/20" };
-  }, [waterInTank]);
+  }, [waterInTank, thresholds]);
 
   // ข้อมูลเชิงลึก (ป้องกัน Error Math.max และ Date)
   const insights = useMemo(() => {
@@ -102,8 +123,9 @@ export default function Home() {
       const rate = hourDiff > 0 ? (calculateWater(latestLog.level) - calculateWater(oldLog.level)) / hourDiff : 0;
 
       let timeStr = null;
-      if (rate > 0 && waterInTank < 10) {
-        const mins = Math.round(((10 - waterInTank) / rate) * 60);
+      // 🌟 อัปเดตสูตรคำนวณเวลาท่วม ให้ใช้ค่า Critical ใหม่
+      if (rate > 0 && waterInTank < thresholds.critical) {
+        const mins = Math.round(((thresholds.critical - waterInTank) / rate) * 60);
         timeStr = mins > 0 ? `${mins} นาที` : "เร็วๆ นี้";
       }
 
@@ -117,7 +139,7 @@ export default function Home() {
     } catch (e) {
       return { maxWater: 0, avgSignal: 0, rateOfChange: 0, timeToFlood: null, lastUpdate: 'Error' };
     }
-  }, [activeLogs, calculateWater, waterInTank]);
+  }, [activeLogs, calculateWater, waterInTank, thresholds]);
 
 
   // 🌟 [PHASE 1] ฟังก์ชัน Export ข้อมูลเป็นไฟล์ Excel (CSV)
