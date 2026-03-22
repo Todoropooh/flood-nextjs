@@ -13,7 +13,7 @@ import RecentLogs from '@/components/RecentLogs';
 import { 
   Waves, Sun, Activity, Thermometer, Droplets, ChevronDown, Settings, 
   Radio, Server, CheckCircle2, ShieldAlert, AlertTriangle, TrendingUp, 
-  Database, Clock, Signal, FileText, ActivitySquare, Zap, Loader2
+  Database, Clock, Signal, FileText, ActivitySquare, Zap, Loader2, Download
 } from 'lucide-react';
 
 const DeviceMap = dynamic(() => import('@/components/DeviceMap'), { 
@@ -119,9 +119,54 @@ export default function Home() {
     }
   }, [activeLogs, calculateWater, waterInTank]);
 
+
+  // 🌟 [PHASE 1] ฟังก์ชัน Export ข้อมูลเป็นไฟล์ Excel (CSV)
+  const exportToCSV = () => {
+    if (!activeLogs || activeLogs.length === 0) {
+      alert("ไม่มีข้อมูลสำหรับดาวน์โหลดครับ");
+      return;
+    }
+
+    // สร้างหัวตาราง (Headers)
+    let csvContent = "วันที่,เวลา,อุปกรณ์ (MAC),ระดับน้ำ (cm),อุณหภูมิ (C),ความชื้น (%)\n";
+
+    // วนลูปเอาข้อมูลมาใส่ทีละบรรทัด (ใช้ activeLogs เพื่อให้ได้ข้อมูลตามอุปกรณ์ที่เลือกอยู่)
+    activeLogs.forEach((log: any) => {
+      const date = new Date(log.createdAt).toLocaleDateString('th-TH');
+      const time = new Date(log.createdAt).toLocaleTimeString('th-TH');
+      const deviceMac = log.mac || log.device_id || "Unknown";
+      
+      // คำนวณระดับน้ำด้วยสูตร Calibrate
+      const rawLevel = Number(log.level ?? 62.0);
+      let calcLevel = (62.0 - rawLevel);
+      if (rawLevel <= 0.5 || rawLevel > 75) calcLevel = 0;
+      if (calcLevel < 0) calcLevel = 0;
+      if (calcLevel > 40) calcLevel = 40;
+      
+      const level = calcLevel.toFixed(2);
+      const temp = log.temperature ? Number(log.temperature).toFixed(1) : "0.0";
+      const hum = log.humidity || log.air_humidity ? Number(log.humidity || log.air_humidity).toFixed(1) : "0.0";
+
+      csvContent += `${date},${time},${deviceMac},${level},${temp},${hum}\n`;
+    });
+
+    // สร้างไฟล์และสั่งดาวน์โหลด
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' }); // \uFEFF ช่วยให้ Excel อ่านภาษาไทยได้สมบูรณ์
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const dateStr = new Date().toISOString().split('T')[0];
+    const fileName = selectedDeviceMac === 'ALL' ? `WaterLevel_All_Devices_${dateStr}.csv` : `WaterLevel_${selectedDeviceMac}_${dateStr}.csv`;
+    link.setAttribute("download", fileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+
   if (!isMounted) return null;
 
-  // 🌟 ถ้ายังดึงข้อมูลครั้งแรกไม่เสร็จ ให้โชว์หน้า Loading แทนการปล่อยให้ Script ทำงานจนล่ม
+  // ถ้ายังดึงข้อมูลครั้งแรกไม่เสร็จ ให้โชว์หน้า Loading แทนการปล่อยให้ Script ทำงานจนล่ม
   if (logs.length === 0 && devices.length === 0) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-[#020617] flex flex-col items-center justify-center gap-4">
@@ -138,7 +183,7 @@ export default function Home() {
           <div className="flex items-center gap-6">
             <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl text-white shadow-lg"><Waves size={24}/></div>
             <div className="relative">
-              <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="flex items-center gap-3 bg-slate-100 dark:bg-slate-900 px-5 py-2.5 rounded-2xl text-xs font-black uppercase tracking-widest border border-slate-200 dark:border-slate-800 transition-all">
+              <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="flex items-center gap-3 bg-slate-100 dark:bg-slate-900 px-5 py-2.5 rounded-2xl text-xs font-black uppercase tracking-widest border border-slate-200 dark:border-slate-800 transition-all hover:bg-slate-200 dark:hover:bg-slate-800">
                 <Server size={16} className="text-blue-500" />
                 {selectedDeviceMac === 'ALL' ? 'System Overview' : devices.find(d => d.mac === selectedDeviceMac)?.name || 'Device'}
                 <ChevronDown size={16} className={isDropdownOpen ? 'rotate-180 transition-transform' : ''} />
@@ -164,7 +209,7 @@ export default function Home() {
 
       <main className="max-w-[1600px] mx-auto p-6 space-y-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className={`lg:col-span-4 p-8 rounded-[2.5rem] bg-white dark:bg-slate-900 border-2 ${status.border} ${status.glow} shadow-2xl flex flex-col justify-between relative overflow-hidden group`}>
+          <div className={`lg:col-span-4 p-8 rounded-[2.5rem] bg-white dark:bg-slate-900 border-2 ${status.border} shadow-2xl flex flex-col justify-between relative overflow-hidden group transition-all duration-300 ${status.glow}`}>
              <div className="relative z-10">
                 <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Live Status</span>
                 <div className={`text-5xl font-black mt-2 ${status.color} tracking-tighter`}>{status.label}</div>
@@ -200,11 +245,26 @@ export default function Home() {
                 <DeviceMap devices={devices.filter(d => selectedDeviceMac === 'ALL' || d.mac === selectedDeviceMac)} />
               </div>
            </div>
+           
+           {/* 🌟 ปรับปรุงส่วน Records เพิ่มปุ่ม Download Excel */}
            <div className="xl:col-span-5 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden flex flex-col h-[532px]">
-              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/50">
-                 <h3 className="font-black uppercase text-slate-700 dark:text-white tracking-widest text-xs flex items-center gap-2"><Database size={16} className="text-indigo-500"/> Records</h3>
-                 <span className="text-[10px] font-bold text-slate-400">Sync: {insights.lastUpdate}</span>
+              <div className="p-4 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/50">
+                 <div>
+                   <h3 className="font-black uppercase text-slate-700 dark:text-white tracking-widest text-xs flex items-center gap-2">
+                     <Database size={16} className="text-indigo-500"/> Records
+                   </h3>
+                   <span className="text-[10px] font-bold text-slate-400 mt-1 block">Sync: {insights.lastUpdate}</span>
+                 </div>
+                 
+                 {/* ปุ่ม Export to CSV */}
+                 <button 
+                   onClick={exportToCSV}
+                   className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-emerald-500/30 active:scale-95"
+                 >
+                   <Download size={14} /> <span className="hidden sm:inline">Export CSV</span>
+                 </button>
               </div>
+
               <div className="flex-grow overflow-auto">
                  <RecentLogs logs={activeLogs} />
               </div>
