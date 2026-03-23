@@ -4,9 +4,11 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useTheme } from 'next-themes';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { signIn, signOut, useSession } from 'next-auth/react';
+import { signOut, useSession } from 'next-auth/react';
 
-// Import Components แบบป้องกัน Error
+// 🌟 Import หน้า Login ที่เราแยกไฟล์ไว้
+import LoginScreen from '@/components/LoginScreen'; 
+
 import WaterLevelChart from '@/components/WaterLevelChart';
 import WaterTank from '@/components/WaterTank'; 
 import RecentLogs from '@/components/RecentLogs'; 
@@ -26,10 +28,7 @@ const DeviceMap = dynamic(() => import('@/components/DeviceMap'), {
 export default function Home() {
   const { data: session, status } = useSession(); 
   
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  // ✂️ สังเกตว่า State ของ Login (username, password) หายไปหมดแล้ว! โค้ดสะอาดขึ้นเยอะ!
 
   const [logs, setLogs] = useState<any[]>([]);
   const [devices, setDevices] = useState<any[]>([]);
@@ -40,28 +39,6 @@ export default function Home() {
   const { setTheme, resolvedTheme } = useTheme();
 
   useEffect(() => { setIsMounted(true); }, []);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsAuthenticating(true);
-    setLoginError("");
-
-    try {
-      const res = await signIn("credentials", {
-        redirect: false,
-        username,
-        password,
-      });
-
-      if (res?.error) {
-        setLoginError("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
-      }
-    } catch (err) {
-      setLoginError("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
-    } finally {
-      setIsAuthenticating(false);
-    }
-  };
 
   const handleLogout = () => {
     signOut({ redirect: false }); 
@@ -170,40 +147,25 @@ export default function Home() {
     } catch (e) { return { maxWater: 0, avgSignal: 0, rateOfChange: 0, timeToFlood: null, lastUpdate: 'Error', percentToCritical: 0 }; }
   }, [activeLogs, calculateWater, waterInTank, activeThresholds, devices]);
 
-  const exportToCSV = () => { /* ฟังก์ชันเดิม */ };
+  const exportToCSV = () => { /* ฟังก์ชันส่งออก CSV */ };
 
+  // ⏳ ระหว่างรอตรวจสอบสถานะ
   if (!isMounted || status === 'loading') {
     return <div className="flex h-screen items-center justify-center bg-[#F1F5F9] dark:bg-[#020617]"><Loader2 className="animate-spin text-blue-500" size={40} /></div>;
   }
 
+  // ==========================================
+  // 🚫 เรียกใช้ Component Login ถ้ายังไม่ล็อกอิน
+  // ==========================================
   if (status === 'unauthenticated') {
-    return (
-      <div className="flex h-screen items-center justify-center bg-[#F1F5F9] dark:bg-[#020617] transition-all duration-500 font-sans">
-        <div className="p-8 bg-white dark:bg-slate-900 shadow-2xl rounded-[2.5rem] w-[400px] border-t-4 border-blue-500 dark:border-blue-600">
-          <div className="text-center mb-8">
-            <div className="inline-flex p-4 bg-blue-500/10 text-blue-500 rounded-2xl mb-4"><Waves size={32} /></div>
-            <h1 className="text-2xl font-black text-slate-800 dark:text-white">Flood Monitor</h1>
-            <p className="text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest">Secure Access</p>
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-4">
-            <input type="text" placeholder="ชื่อผู้ใช้งาน (Username)" className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl outline-none focus:border-blue-500 dark:focus:border-blue-500 transition-all text-slate-800 dark:text-white" value={username} onChange={(e) => setUsername(e.target.value)} required />
-            <div>
-              <input type="password" placeholder="รหัสผ่าน (Password)" className={`w-full p-4 bg-slate-50 dark:bg-slate-800 border rounded-2xl outline-none transition-all text-slate-800 dark:text-white ${loginError ? "border-red-500 bg-red-50/50 dark:bg-red-900/10" : "border-slate-200 dark:border-slate-700 focus:border-blue-500"}`} value={password} onChange={(e) => { setPassword(e.target.value); setLoginError(""); }} required />
-              {loginError && <p className="text-red-500 text-xs font-bold mt-2 ml-2">{loginError}</p>}
-            </div>
-            <button type="submit" disabled={isAuthenticating} className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-black uppercase tracking-widest py-4 rounded-2xl transition-colors shadow-lg shadow-blue-500/30 flex justify-center items-center mt-4">
-              {isAuthenticating ? <Loader2 className="animate-spin" size={20} /> : "เข้าสู่ระบบ"}
-            </button>
-          </form>
-        </div>
-      </div>
-    );
+    return <LoginScreen />;
   }
 
-  // 🌟 ดึงค่า Role จาก Session มาเช็ค
   const userRole = (session?.user as any)?.role || 'user';
 
+  // ==========================================
+  // ✅ โค้ดส่วน UI ของ Dashboard คงเดิม
+  // ==========================================
   return (
     <div className="min-h-screen bg-[#F1F5F9] dark:bg-[#020617] transition-all duration-500 font-sans pb-10">
       <header className="sticky top-0 z-[100] bg-white/70 dark:bg-slate-950/70 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 px-8 py-4 print:hidden">
@@ -231,7 +193,6 @@ export default function Home() {
           <div className="flex items-center gap-3">
              <button onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')} className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-blue-500 transition-colors"><Sun size={20}/></button>
              
-             {/* 🌟 ซ่อนปุ่มเข้าหน้า Admin ถ้าไม่ใช่ admin */}
              {userRole === 'admin' && (
                <Link href="/admin" className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-blue-500 transition-all" title="ไปหน้าจัดการระบบ">
                  <Settings size={20} />
