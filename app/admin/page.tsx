@@ -7,13 +7,12 @@ import { useTheme } from 'next-themes';
 import { 
   ArrowLeft, Trash2, XCircle, Search, Cpu, 
   Plus, Edit2, Users, ShieldCheck, Image as ImageIcon, 
-  Loader2, FileText, Calendar, Sun, Moon, Settings, UserCog
+  Loader2, FileText, Calendar, Sun, Moon, Settings, UserCog, Ruler
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as htmlToImage from 'html-to-image'; 
 
-// 🌟 Import Component
 import NodeModal from '@/components/NodeModal'; 
 import WaterLevelChart from '@/components/WaterLevelChart'; 
 
@@ -39,10 +38,11 @@ export default function AdminPage() {
   const [systemSettings, setSystemSettings] = useState({ systemOn: true, buzzerOn: true });
   const [exportLogs, setExportLogs] = useState<any[]>([]); 
 
+  // 🌟 เพิ่ม installHeight: 62.0 เป็นค่าเริ่มต้น
   const defaultDevice = { 
     name: '', mac: '', location: '', type: 'ESP32', image: '', 
-    warningThreshold: 5.0, criticalThreshold: 10.0, lat: 14.8824, lng: 103.4936,
-    isActive: true, isBuzzerEnabled: true 
+    warningThreshold: 5.0, criticalThreshold: 10.0, installHeight: 62.0, 
+    lat: 14.8824, lng: 103.4936, isActive: true, isBuzzerEnabled: true 
   };
   
   const defaultUser = { username: '', password: '', firstname: '', lastname: '', role: 'user', phone: '', image: '' };
@@ -239,7 +239,6 @@ export default function AdminPage() {
   return (
     <main className="min-h-screen relative font-sans text-slate-800 dark:text-slate-100 pb-20 bg-slate-100 dark:bg-[#020617] transition-colors duration-500">
       
-      {/* 🌟 UI ใหม่: หัวเว็บแบบทึบ เน้นความชัดเจน */}
       <div className={`sticky top-0 z-40 w-full bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm transition-all duration-700 ${showUI ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
         <div className="max-w-6xl mx-auto px-6 py-4 space-y-4">
           
@@ -299,7 +298,6 @@ export default function AdminPage() {
 
       <div className="max-w-6xl mx-auto p-4 md:px-6 mt-8 relative z-10">
         
-        {/* 🌟 UI ใหม่: ตารางข้อมูลพื้นหลังทึบ อ่านง่ายมาก */}
         <div className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] shadow-xl overflow-hidden`}>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -327,11 +325,13 @@ export default function AdminPage() {
                     </td>
                     <td className="px-8 py-5">
                       <div className="flex flex-col gap-1">
-                        <div className="text-[11px] font-black text-slate-500 uppercase flex items-center gap-2">
+                        <div className="text-[11px] font-black text-slate-500 flex items-center gap-2">
+                           <span className="text-blue-500 flex items-center gap-1"><Ruler size={12}/> โผล่พ้นพื้น: {device.installHeight ?? 62.0}cm</span>
+                        </div>
+                        <div className="text-[11px] font-black text-slate-500 uppercase flex items-center gap-2 mt-1">
                            <span className="text-orange-500">Warn: {device.warningThreshold ?? 5}cm</span> | 
                            <span className="text-red-500">Crit: {device.criticalThreshold ?? 10}cm</span>
                         </div>
-                        <div className="text-sm font-black text-blue-600 dark:text-blue-400">Current: {device.waterLevel?.toFixed(1) || '0.0'} cm</div>
                       </div>
                     </td>
                     <td className="px-8 py-5 text-right space-x-2">
@@ -367,7 +367,6 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Modals ใช้งานเหมือนเดิม */}
       <NodeModal 
         key={editingId || 'new'} 
         isOpen={isAddModalOpen}
@@ -440,7 +439,6 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* 🌟 หน้าต่างตั้งค่าระบบ (ลบช่องกรอกน้ำออกแล้ว ให้เหลือแค่เปิดปิดระบบ) */}
       {isSettingsModalOpen && (
         <div className={`fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300 ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
           <div className={`bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-sm border border-slate-200 dark:border-slate-800 transform transition-all duration-300 ${modalAnim ? 'scale-100' : 'scale-95'} overflow-hidden p-8`}>
@@ -477,7 +475,6 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* 🌟 ฐานลับนินจา: ซ่อนกราฟไว้หลังฉาก */}
       <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '800px', height: '400px', zIndex: -50 }}>
         <div id="pdf-chart-container" style={{ width: '100%', height: '100%', backgroundColor: 'white', padding: '20px', borderRadius: '10px' }}>
            <h2 style={{ textAlign: 'center', color: '#1e293b', marginBottom: '15px', fontFamily: 'sans-serif', fontSize: '18px', fontWeight: 'bold' }}>

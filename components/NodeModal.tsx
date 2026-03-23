@@ -20,15 +20,12 @@ interface NodeModalProps {
 }
 
 export default function NodeModal({ isOpen, modalAnim, editingId, initialData, onClose, onSubmit, isSaving }: NodeModalProps) {
-  // 🌟 สร้าง State โดยดึงค่าจาก initialData ตรงๆ
   const [formData, setFormData] = useState(initialData);
 
-  // 🌟 หัวใจสำคัญ: เมื่อเปิด Modal หรือข้อมูลเปลี่ยน ต้อง Sync ค่าใหม่ทันที
   useEffect(() => {
     if (isOpen && initialData) {
       setFormData({
         ...initialData,
-        // เช็คให้แน่ใจว่าถ้าเป็น false ต้องได้ false (ห้ามเป็น undefined)
         isActive: initialData.isActive === false ? false : true,
         isBuzzerEnabled: initialData.isBuzzerEnabled === false ? false : true,
       });
@@ -67,10 +64,8 @@ export default function NodeModal({ isOpen, modalAnim, editingId, initialData, o
   return (
     <div className={`fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300 ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
       
-      {/* 🌟 ปรับ Container ใหม่ ทึบและชัดเจนขึ้น */}
       <div className={`bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-2xl border border-slate-200 dark:border-slate-800 transform transition-all duration-300 cubic-bezier(0.16, 1, 0.3, 1) ${modalAnim ? 'scale-100 translate-y-0' : 'scale-95 translate-y-4'} text-slate-800 dark:text-white overflow-hidden max-h-[90vh] flex flex-col`}>
         
-        {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-950/50 shrink-0">
           <h3 className="font-black text-xs text-slate-600 dark:text-slate-300 uppercase tracking-widest flex items-center gap-2">
             <Settings size={16} className="text-blue-500" />
@@ -81,15 +76,12 @@ export default function NodeModal({ isOpen, modalAnim, editingId, initialData, o
           </button>
         </div>
 
-        {/* Body Form */}
         <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-6 overflow-y-auto">
           
-          {/* ข้อมูลอุปกรณ์ */}
           <div className="grid grid-cols-2 gap-4">
             <input required type="text" placeholder="Device Name" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} className="col-span-2 md:col-span-1 p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl outline-none text-sm font-bold text-slate-800 dark:text-white focus:border-blue-500 transition-colors" />
             <input required type="text" placeholder="MAC Address" value={formData.mac || ''} onChange={e => setFormData({...formData, mac: e.target.value})} className="col-span-2 md:col-span-1 p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl outline-none text-sm font-mono font-bold text-slate-800 dark:text-white focus:border-blue-500 transition-colors" />
             
-            {/* อัปโหลดรูป */}
             <div className="col-span-2 flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl">
                <div className="w-16 h-16 bg-white dark:bg-slate-900 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 flex items-center justify-center shrink-0 shadow-sm">
                  {formData.image ? <img src={formData.image} className="w-full h-full object-cover" alt="device" /> : <ImageIcon size={24} className="text-slate-300 dark:text-slate-700"/>}
@@ -100,23 +92,27 @@ export default function NodeModal({ isOpen, modalAnim, editingId, initialData, o
                </div>
             </div>
 
-            {/* เกณฑ์แจ้งเตือน */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-orange-500 uppercase ml-1 tracking-widest">Warning (cm)</label>
-              <input type="number" step="0.1" value={formData.warningThreshold ?? 3} onChange={e => setFormData({...formData, warningThreshold: Number(e.target.value)})} className="w-full p-3.5 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 rounded-xl text-orange-600 dark:text-orange-400 font-black text-sm text-center focus:border-orange-500 outline-none transition-colors" />
+            {/* 🌟 1. ฟิลด์ระยะติดตั้งเซนเซอร์ (พาดเต็มความกว้าง) */}
+            <div className="col-span-2 space-y-1.5 pt-2">
+              <label className="text-[10px] font-black text-blue-500 uppercase ml-1 tracking-widest">Install Height (ระยะเซนเซอร์ถึงพื้น cm)</label>
+              <input type="number" step="0.1" value={formData.installHeight ?? 62.0} onChange={e => setFormData({...formData, installHeight: Number(e.target.value)})} className="w-full p-3.5 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-xl text-blue-600 dark:text-blue-400 font-black text-sm focus:border-blue-500 outline-none transition-colors" />
             </div>
-            <div className="space-y-1.5">
+
+            {/* 2. ฟิลด์เกณฑ์แจ้งเตือน */}
+            <div className="space-y-1.5 pt-2">
+              <label className="text-[10px] font-black text-orange-500 uppercase ml-1 tracking-widest">Warning (cm)</label>
+              <input type="number" step="0.1" value={formData.warningThreshold ?? 5} onChange={e => setFormData({...formData, warningThreshold: Number(e.target.value)})} className="w-full p-3.5 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 rounded-xl text-orange-600 dark:text-orange-400 font-black text-sm text-center focus:border-orange-500 outline-none transition-colors" />
+            </div>
+            <div className="space-y-1.5 pt-2">
               <label className="text-[10px] font-black text-red-500 uppercase ml-1 tracking-widest">Critical (cm)</label>
-              <input type="number" step="0.1" value={formData.criticalThreshold ?? 7} onChange={e => setFormData({...formData, criticalThreshold: Number(e.target.value)})} className="w-full p-3.5 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-red-600 dark:text-red-400 font-black text-sm text-center focus:border-red-500 outline-none transition-colors" />
+              <input type="number" step="0.1" value={formData.criticalThreshold ?? 10} onChange={e => setFormData({...formData, criticalThreshold: Number(e.target.value)})} className="w-full p-3.5 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-red-600 dark:text-red-400 font-black text-sm text-center focus:border-red-500 outline-none transition-colors" />
             </div>
           </div>
 
-          {/* 🌟 REMOTE CONTROL SECTION (สวิตช์ Toggle) */}
           <div className="pt-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-3 block">Remote Control & Notification</label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               
-              {/* System Status Toggle */}
               <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl">
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-xl ${formData.isActive ? 'bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400' : 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}><Power size={18} /></div>
@@ -131,7 +127,6 @@ export default function NodeModal({ isOpen, modalAnim, editingId, initialData, o
                 </button>
               </div>
 
-              {/* Buzzer Audio Toggle */}
               <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl">
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-xl ${formData.isBuzzerEnabled ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400' : 'bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-400'}`}>
@@ -151,7 +146,6 @@ export default function NodeModal({ isOpen, modalAnim, editingId, initialData, o
             </div>
           </div>
 
-          {/* แผนที่ */}
           <div className="space-y-2 pt-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2"><MapPin size={14} /> Location Map</label>
             <div className="p-1 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
