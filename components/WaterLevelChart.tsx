@@ -62,15 +62,17 @@ export default function WaterLevelChart({ data = [], isDark, timeframe = 'day', 
         if (!log) return null;
 
         if (viewMode === 'LEVEL') {
-          // 🌟 [ปรับปรุง] ดึงระยะติดตั้ง (installHeight) ของอุปกรณ์ตัวนี้มาคำนวณกราฟ
-          const h = dev.installHeight ?? 62.0; 
-          const raw = Number(log.level || h);
+          // 📏 ปรับให้เข้ากับระยะ 13.5 cm ของพี่
+          const h = dev.installHeight ?? 13.5; 
+          const raw = Number(log.level);
+          
+          if (isNaN(raw) || raw >= (h - 0.1)) return 0;
           
           let v = (h - raw); 
+          if (v < 0) v = 0;
+          if (v > h) v = h;
           
-          // กรอง Noise อิงตามระยะติดตั้งจริง
-          if (raw <= 0.5 || raw > (h + 10)) v = 0;
-          return v < 0 ? 0 : (v > 40 ? 40 : v);
+          return Number(v.toFixed(2)); // คืนค่าทศนิยม 2 ตำแหน่งให้กราฟวาดละเอียดๆ
         }
         return viewMode === 'TEMP' ? Number(log.temperature) : Number(log.air_humidity || log.humidity);
       });
@@ -91,6 +93,17 @@ export default function WaterLevelChart({ data = [], isDark, timeframe = 'day', 
 
     return { labels, datasets };
   }, [data, timeframe, viewMode, selectedDeviceMac, mounted, devices]);
+
+  // 🌟 คำนวณหาค่าความสูงของแกน Y ให้เหมาะสมกับข้อมูล
+  const yMax = useMemo(() => {
+    if (viewMode !== 'LEVEL') return viewMode === 'TEMP' ? 60 : 100;
+    
+    if (selectedDeviceMac !== 'ALL') {
+      const dev = devices.find((d: any) => d.mac === selectedDeviceMac);
+      return (dev?.installHeight ?? 13.5) + 2; // เผื่อพื้นที่ด้านบนกราฟเล็กน้อย
+    }
+    return 20; // กรณีดูรวมหลายตัว สำหรับระยะสั้นๆ ตั้งไว้ที่ 20 กำลังสวย
+  }, [viewMode, selectedDeviceMac, devices]);
 
   const options: any = {
     responsive: true,
@@ -125,9 +138,13 @@ export default function WaterLevelChart({ data = [], isDark, timeframe = 'day', 
       },
       y: {
         beginAtZero: true,
-        max: viewMode === 'LEVEL' ? 45 : viewMode === 'TEMP' ? 60 : 100,
+        max: yMax, // 🌟 ใช้ค่า Max ที่คำนวณมาใหม่
         grid: { color: isDark ? '#1e293b' : '#f1f5f9' },
-        ticks: { color: isDark ? '#64748b' : '#94a3b8', font: { weight: 'bold' } }
+        ticks: { 
+          color: isDark ? '#64748b' : '#94a3b8', 
+          font: { weight: 'bold' },
+          callback: (value: any) => value.toFixed(1) // โชว์ทศนิยมที่แกน Y ด้วย
+        }
       }
     }
   };

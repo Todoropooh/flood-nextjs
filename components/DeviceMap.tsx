@@ -29,17 +29,16 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
     ? [devices[0].lat, devices[0].lng] 
     : defaultCenter;
 
-  // 🌟 ฟังก์ชันคำนวณระดับน้ำแบบ Dynamic ตามระยะติดตั้งของแต่ละโหนด
+  // 🌟 ฟังก์ชันคำนวณระดับน้ำแม่นยำสูง (อิงตามระยะ 13.5 cm)
   const calculateWaterForDevice = (device: any) => {
-    const installHeight = device.installHeight ?? 62.0;
+    const installHeight = device.installHeight ?? 13.5;
     const rawDist = Number(device.waterLevel ?? device.level ?? installHeight);
     
-    let wl = (installHeight - rawDist);
+    if (isNaN(rawDist) || rawDist >= (installHeight - 0.1)) return 0;
     
-    // Noise Filter อิงตามระยะติดตั้งจริง
-    if (rawDist <= 0.5 || rawDist > (installHeight + 10)) wl = 0; 
+    let wl = (installHeight - rawDist);
     if (wl < 0) wl = 0;
-    if (wl > 40) wl = 40;
+    if (wl > installHeight) wl = installHeight;
     
     return wl;
   };
@@ -47,12 +46,13 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
   const createCustomIcon = (device: any) => {
     const wl = calculateWaterForDevice(device);
     
-    // 🌟 ดึงเกณฑ์แจ้งเตือนรายอุปกรณ์
-    const warningThresh = device.warningThreshold ?? 5.0;
-    const criticalThresh = device.criticalThreshold ?? 10.0;
+    // 🌟 ดึงเกณฑ์แจ้งเตือนรายอุปกรณ์ (Default 2.8 / 3.0)
+    const warningThresh = device.warningThreshold ?? 2.8;
+    const criticalThresh = device.criticalThreshold ?? 3.0;
+    const tolerance = 0.05;
 
-    const isCritical = wl >= criticalThresh;
-    const isWarning = wl >= warningThresh;
+    const isCritical = wl >= (criticalThresh - tolerance);
+    const isWarning = wl >= (warningThresh - tolerance);
     
     const dotColor = isCritical ? 'bg-red-500' : isWarning ? 'bg-orange-500' : 'bg-emerald-500';
     const textColor = isCritical ? 'text-red-600 dark:text-red-400' : isWarning ? 'text-orange-600 dark:text-orange-400' : 'text-emerald-600 dark:text-emerald-400';
@@ -62,7 +62,7 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
       <div class="relative flex flex-col items-center -mt-8 cursor-pointer hover:-translate-y-1 transition-transform group z-50">
         <div class="bg-white/95 dark:bg-[#151b2b]/95 backdrop-blur-md px-3 py-1.5 rounded-2xl shadow-xl border border-white/50 dark:border-white/10 mb-2 flex flex-col items-center whitespace-nowrap scale-90 group-hover:scale-100 transition-transform">
           <span class="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] mb-0.5">${device.name}</span>
-          <span class="text-[12px] font-black ${textColor}">${wl.toFixed(1)} cm</span>
+          <span class="text-[12px] font-black ${textColor}">${wl.toFixed(2)} cm</span>
         </div>
         <div class="w-5 h-5 rounded-full ${dotColor} ${glowClass} border-4 border-white dark:border-[#020617] relative">
             <div class="absolute inset-0 rounded-full ${dotColor} animate-ping opacity-60"></div>
@@ -81,11 +81,12 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
 
   const getStatusInfo = (device: any) => {
     const wl = calculateWaterForDevice(device);
-    const warningThresh = device.warningThreshold ?? 5.0;
-    const criticalThresh = device.criticalThreshold ?? 10.0;
+    const warningThresh = device.warningThreshold ?? 2.8;
+    const criticalThresh = device.criticalThreshold ?? 3.0;
+    const tolerance = 0.05;
 
-    if (wl >= criticalThresh) return { text: 'อันตราย (Critical)', color: 'text-red-600 dark:text-red-400' };
-    if (wl >= warningThresh) return { text: 'เฝ้าระวัง (Warning)', color: 'text-orange-600 dark:text-orange-400' };
+    if (wl >= (criticalThresh - tolerance)) return { text: 'อันตราย (Critical)', color: 'text-red-600 dark:text-red-400' };
+    if (wl >= (warningThresh - tolerance)) return { text: 'เฝ้าระวัง (Warning)', color: 'text-orange-600 dark:text-orange-400' };
     return { text: 'ปกติ (Stable)', color: 'text-emerald-600 dark:text-emerald-400' };
   };
 

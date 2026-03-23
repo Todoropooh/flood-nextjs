@@ -58,11 +58,21 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  const calculateWater = useCallback((level: any, installHeight: number = 62.0) => {
-    const raw = Number(level ?? installHeight); 
-    let val = (installHeight - raw); 
-    if (raw <= 0.5 || raw > (installHeight + 15)) val = 0; 
-    return val < 0 ? 0 : (val > 40 ? 40 : val); 
+  // 🌟 [ปรับปรุง] สูตรคำนวณสำหรับระยะสั้น (13.5 cm)
+  const calculateWater = useCallback((level: any, installHeight: number = 13.5) => {
+    const raw = Number(level);
+    if (isNaN(raw) || raw <= 0) return 0;
+
+    // ถ้าระยะที่อ่านได้ มากกว่าหรือเท่ากับระยะติดตั้ง (น้ำแห้ง)
+    if (raw >= (installHeight - 0.1)) return 0;
+
+    let val = (installHeight - raw);
+    
+    // ป้องกันค่าดีดเกินจริง
+    if (val > installHeight) val = installHeight;
+    if (val < 0) val = 0;
+
+    return val;
   }, []);
 
   const activeLogs = useMemo(() => {
@@ -74,30 +84,32 @@ export default function Home() {
     if (activeLogs.length === 0) return 0;
     const lastEntry = activeLogs[activeLogs.length - 1];
     const device = devices.find(d => d.mac === (lastEntry.mac || lastEntry.device_id));
-    const currentInstallHeight = device?.installHeight ?? 62.0;
+    const currentInstallHeight = device?.installHeight ?? 13.5;
     return calculateWater(lastEntry?.level, currentInstallHeight);
   }, [activeLogs, calculateWater, devices]);
 
   const activeThresholds = useMemo(() => {
     if (selectedDeviceMac !== 'ALL') {
       const d = devices.find(d => d.mac === selectedDeviceMac);
-      return { warning: d?.warningThreshold ?? 5.0, critical: d?.criticalThreshold ?? 10.0, installHeight: d?.installHeight ?? 62.0 };
+      return { warning: d?.warningThreshold ?? 2.8, critical: d?.criticalThreshold ?? 3.0, installHeight: d?.installHeight ?? 13.5 };
     }
     if (activeLogs.length > 0) {
       const latestLog = activeLogs[activeLogs.length - 1];
       const d = devices.find(d => d.mac === (latestLog.mac || latestLog.device_id));
-      return { warning: d?.warningThreshold ?? 5.0, critical: d?.criticalThreshold ?? 10.0, installHeight: d?.installHeight ?? 62.0 };
+      return { warning: d?.warningThreshold ?? 2.8, critical: d?.criticalThreshold ?? 3.0, installHeight: d?.installHeight ?? 13.5 };
     }
-    return { warning: 5.0, critical: 10.0, installHeight: 62.0 };
+    return { warning: 2.8, critical: 3.0, installHeight: 13.5 };
   }, [selectedDeviceMac, devices, activeLogs]);
 
+  // 🌟 [ปรับปรุง] สถานะการเปลี่ยนสี (ให้แดงง่ายขึ้นสำหรับระยะประชิด)
   const status = useMemo(() => {
-    if (waterInTank >= activeThresholds.critical) return { label: "CRITICAL", color: "text-red-500", bg: "bg-red-500", icon: <ShieldAlert size={24}/>, border: "border-red-500", glow: "shadow-red-500/20" };
-    if (waterInTank >= activeThresholds.warning) return { label: "WARNING", color: "text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle size={24}/>, border: "border-orange-500", glow: "shadow-orange-500/20" };
+    const tolerance = 0.05; // ค่าเผื่อทศนิยม 0.5 มิลลิเมตร
+    if (waterInTank >= (activeThresholds.critical - tolerance)) return { label: "CRITICAL", color: "text-red-500", bg: "bg-red-500", icon: <ShieldAlert size={24}/>, border: "border-red-500", glow: "shadow-red-500/20" };
+    if (waterInTank >= (activeThresholds.warning - tolerance)) return { label: "WARNING", color: "text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle size={24}/>, border: "border-orange-500", glow: "shadow-orange-500/20" };
     return { label: "STABLE", color: "text-emerald-500", bg: "bg-emerald-500", icon: <CheckCircle2 size={24}/>, border: "border-emerald-500", glow: "shadow-emerald-500/20" };
   }, [waterInTank, activeThresholds]);
 
-  // 🔮 Prediction Insights (ปรับปรุงใหม่)
+  // 🔮 Prediction Insights
   const insights = useMemo(() => {
     if (activeLogs.length < 2) {
       return { maxWater: 0, avgSignal: 0, rateOfChange: 0, timeToFlood: null, lastUpdate: 'Waiting...', percentToCritical: 0 };
@@ -105,8 +117,8 @@ export default function Home() {
     try {
       const latestLog = activeLogs[activeLogs.length - 1];
       const device = devices.find(d => d.mac === (latestLog.mac || latestLog.device_id));
-      const h = device?.installHeight ?? 62.0;
-      const crit = device?.criticalThreshold ?? 10.0;
+      const h = device?.installHeight ?? 13.5;
+      const crit = device?.criticalThreshold ?? 3.0;
       const currentWater = calculateWater(latestLog.level, h);
 
       const allWater = activeLogs.map(l => calculateWater(l.level, h));
@@ -118,10 +130,10 @@ export default function Home() {
       const rate = hourDiff > 0 ? (currentWater - calculateWater(oldLog.level, h)) / hourDiff : 0;
 
       let timeStr = "คงที่ (Stable)";
-      if (rate > 0.1 && currentWater < crit) {
+      if (rate > 0.05 && currentWater < crit) {
         const mins = Math.round(((crit - currentWater) / rate) * 60);
         timeStr = mins > 60 ? `ประมาณ ${Math.floor(mins/60)} ชม. ${mins%60} นาที` : `${mins} นาที`;
-      } else if (currentWater >= crit) {
+      } else if (currentWater >= (crit - 0.05)) {
         timeStr = "วิกฤตแล้ว (Now)";
       }
 
@@ -143,7 +155,7 @@ export default function Home() {
     let csvContent = "วันที่,เวลา,อุปกรณ์ (MAC),ระดับน้ำ (cm),อุณหภูมิ (C),ความชื้น (%)\n";
     activeLogs.forEach((log: any) => {
       const device = devices.find(d => d.mac === (log.mac || log.device_id));
-      const h = device?.installHeight ?? 62.0;
+      const h = device?.installHeight ?? 13.5;
       const calcLevel = calculateWater(log.level, h);
       csvContent += `${new Date(log.createdAt).toLocaleDateString('th-TH')},${new Date(log.createdAt).toLocaleTimeString('th-TH')},${log.mac || log.device_id},${calcLevel.toFixed(2)},${(log.temperature || 0).toFixed(1)},${(log.humidity || log.air_humidity || 0).toFixed(1)}\n`;
     });
@@ -192,7 +204,7 @@ export default function Home() {
 
       <main className="max-w-[1600px] mx-auto p-6 space-y-8">
         
-        {/* 🔮 NEW: Prediction Visualizer Card */}
+        {/* 🔮 Prediction Visualizer Card */}
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 dark:from-indigo-950 dark:to-slate-900 p-8 rounded-[3rem] text-white shadow-2xl relative overflow-hidden group border border-white/5 transition-all hover:shadow-indigo-500/10">
           <div className="relative z-10 flex flex-col lg:flex-row justify-between items-center gap-10">
             <div className="space-y-4 text-center lg:text-left flex-1">
@@ -200,9 +212,9 @@ export default function Home() {
                 <Zap size={14} className="fill-blue-400" /> AI Forecast Analysis
               </div>
               <h2 className="text-3xl md:text-4xl font-black tracking-tight leading-tight">
-                {insights.rateOfChange > 0.5 
+                {insights.rateOfChange > 0.1 
                   ? `น้ำกำลังสูงขึ้น! คาดว่าจะถึงขีดจำกัดใน ${insights.timeToFlood}` 
-                  : insights.rateOfChange < -0.5 
+                  : insights.rateOfChange < -0.1 
                     ? "ระดับน้ำกำลังลดลงอย่างต่อเนื่อง" 
                     : "สถานการณ์ระดับน้ำปกติดี (Stable)"}
               </h2>
@@ -243,14 +255,14 @@ export default function Home() {
              <div className="mt-12 relative z-10 flex items-end justify-between">
                 <div>
                   <div className="text-sm font-bold text-slate-500 uppercase">Current Level</div>
-                  <div className="text-6xl font-black text-slate-800 dark:text-white tabular-nums">{waterInTank.toFixed(1)}<span className="text-xl ml-2 text-slate-400">cm</span></div>
+                  <div className="text-6xl font-black text-slate-800 dark:text-white tabular-nums">{waterInTank.toFixed(2)}<span className="text-xl ml-2 text-slate-400">cm</span></div>
                 </div>
                 <div className={`p-5 rounded-[1.5rem] ${status.bg} text-white shadow-2xl animate-bounce`}>{status.icon}</div>
              </div>
           </div>
           <div className="lg:col-span-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-             <StatCard icon={<TrendingUp />} label="Highest" value={insights.maxWater.toFixed(1)} unit="cm" color="blue" />
-             <StatCard icon={<ActivitySquare />} label="Rate" value={(insights.rateOfChange > 0 ? "+" : "") + insights.rateOfChange.toFixed(1)} unit="cm/h" color="orange" />
+             <StatCard icon={<TrendingUp />} label="Highest" value={insights.maxWater.toFixed(2)} unit="cm" color="blue" />
+             <StatCard icon={<ActivitySquare />} label="Rate" value={(insights.rateOfChange > 0 ? "+" : "") + insights.rateOfChange.toFixed(2)} unit="cm/h" color="orange" />
              <StatCard icon={<Zap />} label="Prediction" value={insights.timeToFlood || "Stable"} unit="" color="pink" />
              <StatCard icon={<Signal />} label="Signal" value={insights.avgSignal} unit="CSQ" color="indigo" />
           </div>
@@ -262,7 +274,13 @@ export default function Home() {
                 <WaterLevelChart data={activeLogs} isDark={resolvedTheme === 'dark'} devices={devices} timeframe={timeframe} selectedDeviceMac={selectedDeviceMac} />
              </div>
           </div>
-          <div className="xl:col-span-4"><WaterTank level={waterInTank} warningThreshold={activeThresholds.warning} criticalThreshold={activeThresholds.critical} /></div>
+          <div className="xl:col-span-4">
+            <WaterTank 
+              level={waterInTank} 
+              warningThreshold={activeThresholds.warning} 
+              criticalThreshold={activeThresholds.critical} 
+            />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">

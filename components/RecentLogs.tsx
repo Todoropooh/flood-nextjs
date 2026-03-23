@@ -13,7 +13,6 @@ interface Log {
   device_id?: string;
 }
 
-// 🌟 รับค่า devices เพิ่มเข้ามาเพื่อเอาระยะติดตั้งและเกณฑ์แจ้งเตือน
 export default function RecentLogs({ logs, devices }: { logs: Log[], devices?: any[] }) {
   
   return (
@@ -29,33 +28,34 @@ export default function RecentLogs({ logs, devices }: { logs: Log[], devices?: a
         <tbody className="divide-y divide-slate-100 dark:divide-white/5">
           {[...logs].reverse().map((log, index) => {
             
-            // 🌟 1. ค้นหาข้อมูลอุปกรณ์เพื่อดึงค่า Install Height และเกณฑ์ต่างๆ
+            // 🌟 1. ค้นหาข้อมูลอุปกรณ์รายตัว
             const deviceMac = log.mac || log.device_id;
             const logDevice = devices?.find(d => d.mac === deviceMac);
             
-            // ใช้ค่าจาก Admin ถ้าไม่มีให้ใช้ค่า Default 62.0
-            const currentInstallHeight = logDevice?.installHeight ?? 62.0;
-            const currentWarningThresh = logDevice?.warningThreshold ?? 5.0;
-            const currentCriticalThresh = logDevice?.criticalThreshold ?? 10.0;
+            // 📏 ปรับค่าพื้นฐานให้เข้ากับระยะ 13.5 cm
+            const currentInstallHeight = logDevice?.installHeight ?? 13.5;
+            const currentWarningThresh = logDevice?.warningThreshold ?? 2.8;
+            const currentCriticalThresh = logDevice?.criticalThreshold ?? 3.0;
 
-            // ✅ 2. คำนวณระดับน้ำ (V4.5 Dynamic Formula)
-            const rawDist = Number(log.level) || currentInstallHeight;
+            // ✅ 2. คำนวณระดับน้ำแม่นยำสูง
+            const rawDist = Number(log.level);
             let waterLevel = (currentInstallHeight - rawDist);
             
-            // ป้องกันค่า Noise และจำกัดช่วงข้อมูล
-            if (rawDist <= 0.5 || rawDist > (currentInstallHeight + 10)) waterLevel = 0;
-            if (waterLevel > 40) waterLevel = 40;
+            // Noise Filter สำหรับระยะสั้น
+            if (rawDist >= (currentInstallHeight - 0.1)) waterLevel = 0;
             if (waterLevel < 0) waterLevel = 0;
+            if (waterLevel > currentInstallHeight) waterLevel = currentInstallHeight;
 
-            // ✅ 3. ปรับสีตามเกณฑ์ของอุปกรณ์ตัวนั้นที่ตั้งค่าไว้
-            let displayStatus = 'ปลอดภัย';
+            // ✅ 3. เช็คสีสถานะ (ใส่ Tolerance 0.05 เพื่อความแม่นยำมิลลิเมตร)
+            const tolerance = 0.05;
+            let displayStatus = 'ปกติ (STABLE)';
             let statusClasses = 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400';
 
-            if (waterLevel >= currentCriticalThresh) { // 🔴 อันตราย
-              displayStatus = 'อันตราย';
+            if (waterLevel >= (currentCriticalThresh - tolerance)) { 
+              displayStatus = 'อันตราย (CRITICAL)';
               statusClasses = 'bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-400';
-            } else if (waterLevel >= currentWarningThresh) { // 🟠 เฝ้าระวัง
-              displayStatus = 'เฝ้าระวัง';
+            } else if (waterLevel >= (currentWarningThresh - tolerance)) {
+              displayStatus = 'เฝ้าระวัง (WARNING)';
               statusClasses = 'bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400';
             }
 
@@ -69,7 +69,8 @@ export default function RecentLogs({ logs, devices }: { logs: Log[], devices?: a
                   {timeString}
                 </td>
                 <td className="px-4 py-4 font-black text-slate-700 dark:text-white text-base">
-                  {waterLevel.toFixed(1)} <span className="text-[9px] text-slate-400 uppercase tracking-widest font-bold ml-0.5">cm</span>
+                  {/* 🌟 โชว์ทศนิยม 2 ตำแหน่งเพื่อความละเอียด */}
+                  {waterLevel.toFixed(2)} <span className="text-[9px] text-slate-400 uppercase tracking-widest font-bold ml-0.5">cm</span>
                 </td>
                 <td className="px-4 py-4">
                   <span className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-[0.1em] border border-transparent group-hover:border-current transition-all ${statusClasses}`}>
