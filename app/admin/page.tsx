@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { signOut, useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { useTheme } from 'next-themes'; 
+import { useRouter } from 'next/navigation'; // 🌟 เพิ่ม useRouter ไว้สำหรับเตะ User กลับหน้าแรก
 import { 
   ArrowLeft, Trash2, XCircle, Search, Cpu, 
   Plus, Edit2, Users, ShieldCheck, Image as ImageIcon, 
@@ -17,7 +18,8 @@ import NodeModal from '@/components/NodeModal';
 import WaterLevelChart from '@/components/WaterLevelChart'; 
 
 export default function AdminPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession(); // 🌟 ดึง status มาด้วย
+  const router = useRouter();
   const { setTheme, resolvedTheme } = useTheme(); 
 
   const [activeTab, setActiveTab] = useState<'nodes' | 'users'>('nodes');
@@ -38,7 +40,6 @@ export default function AdminPage() {
   const [systemSettings, setSystemSettings] = useState({ systemOn: true, buzzerOn: true });
   const [exportLogs, setExportLogs] = useState<any[]>([]); 
 
-  // 🌟 เพิ่ม installHeight: 62.0 เป็นค่าเริ่มต้น
   const defaultDevice = { 
     name: '', mac: '', location: '', type: 'ESP32', image: '', 
     warningThreshold: 5.0, criticalThreshold: 10.0, installHeight: 62.0, 
@@ -50,12 +51,27 @@ export default function AdminPage() {
   const [userFormData, setUserFormData] = useState(defaultUser);
   const [isMounted, setIsMounted] = useState(false);
 
+  // 🌟 ระบบป้องกันการเข้าถึง (Access Control)
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/'); // ถ้ายังไม่ล็อกอิน เตะไปหน้าแรก
+    } else if (status === 'authenticated') {
+      const userRole = (session?.user as any)?.role;
+      if (userRole !== 'admin') {
+        router.push('/'); // ถ้าล็อกอินแล้วแต่ไม่ใช่ admin เตะไปหน้าแรก
+      }
+    }
+  }, [status, session, router]);
+
   useEffect(() => { 
     setIsMounted(true); 
-    fetchData();
-    fetchSettings();
-    setTimeout(() => setShowUI(true), 100);
-  }, []);
+    // โหลดข้อมูลเฉพาะตอนที่เป็น admin เท่านั้น
+    if (status === 'authenticated' && (session?.user as any)?.role === 'admin') {
+      fetchData();
+      fetchSettings();
+      setTimeout(() => setShowUI(true), 100);
+    }
+  }, [status, session]);
 
   const fetchSettings = async () => {
     try {
@@ -231,7 +247,10 @@ export default function AdminPage() {
     });
   };
 
-  if (!isMounted) return null;
+  // 🌟 รอโหลดหรือถ้าไม่ใช่ admin ให้โชว์จอเปล่าไปก่อน (กันกระตุกก่อนโดนเตะ)
+  if (!isMounted || status === 'loading' || (status === 'authenticated' && (session?.user as any)?.role !== 'admin')) {
+    return <div className="min-h-screen bg-slate-100 dark:bg-[#020617] flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" size={40} /></div>;
+  }
 
   const displayUsers = users.filter(u => u.username !== (session?.user as any)?.username);
   const myProfileData = users.find(u => u.username === (session?.user as any)?.username);
@@ -255,7 +274,7 @@ export default function AdminPage() {
               <button onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')} className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-blue-600 transition-colors">
                 {resolvedTheme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}
               </button>
-              <button onClick={() => signOut()} className="px-4 py-2.5 bg-red-50 dark:bg-red-500/10 text-red-600 rounded-xl text-[11px] font-black uppercase transition-colors hover:bg-red-100 dark:hover:bg-red-500/20">
+              <button onClick={() => signOut({ callbackUrl: '/' })} className="px-4 py-2.5 bg-red-50 dark:bg-red-500/10 text-red-600 rounded-xl text-[11px] font-black uppercase transition-colors hover:bg-red-100 dark:hover:bg-red-500/20">
                 Logout
               </button>
             </div>
