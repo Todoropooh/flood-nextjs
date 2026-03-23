@@ -58,10 +58,10 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  const calculateWater = useCallback((level: any) => {
-    const raw = Number(level ?? 62.0); 
-    let val = (62.0 - raw); 
-    if (raw <= 0.5 || raw > 75) val = 0; 
+  const calculateWater = useCallback((level: any, installHeight: number = 62.0) => {
+    const raw = Number(level ?? installHeight); 
+    let val = (installHeight - raw); 
+    if (raw <= 0.5 || raw > (installHeight + 15)) val = 0; 
     return val < 0 ? 0 : (val > 40 ? 40 : val); 
   }, []);
 
@@ -73,51 +73,56 @@ export default function Home() {
   const waterInTank = useMemo(() => {
     if (activeLogs.length === 0) return 0;
     const lastEntry = activeLogs[activeLogs.length - 1];
-    return calculateWater(lastEntry?.level);
-  }, [activeLogs, calculateWater]);
+    const device = devices.find(d => d.mac === (lastEntry.mac || lastEntry.device_id));
+    const currentInstallHeight = device?.installHeight ?? 62.0;
+    return calculateWater(lastEntry?.level, currentInstallHeight);
+  }, [activeLogs, calculateWater, devices]);
 
-  // 🌟 [PHASE 3: แยกรายอุปกรณ์] ดึงค่าเกณฑ์เตือนภัยของ "อุปกรณ์ที่เลือกอยู่"
   const activeThresholds = useMemo(() => {
-    // 1. ถ้าเลือกดูเฉพาะตัวใดตัวหนึ่ง ให้เอาค่าของตัวนั้นมาใช้
     if (selectedDeviceMac !== 'ALL') {
       const d = devices.find(d => d.mac === selectedDeviceMac);
-      return { warning: d?.warningThreshold ?? 5.0, critical: d?.criticalThreshold ?? 10.0 };
+      return { warning: d?.warningThreshold ?? 5.0, critical: d?.criticalThreshold ?? 10.0, installHeight: d?.installHeight ?? 62.0 };
     }
-    // 2. ถ้าดูหน้าจอรวม (ALL) ให้ยึดตามค่าเกณฑ์ของอุปกรณ์ตัวล่าสุดที่ส่งข้อมูลมา
     if (activeLogs.length > 0) {
       const latestLog = activeLogs[activeLogs.length - 1];
       const d = devices.find(d => d.mac === (latestLog.mac || latestLog.device_id));
-      return { warning: d?.warningThreshold ?? 5.0, critical: d?.criticalThreshold ?? 10.0 };
+      return { warning: d?.warningThreshold ?? 5.0, critical: d?.criticalThreshold ?? 10.0, installHeight: d?.installHeight ?? 62.0 };
     }
-    return { warning: 5.0, critical: 10.0 }; // ค่าพื้นฐาน
+    return { warning: 5.0, critical: 10.0, installHeight: 62.0 };
   }, [selectedDeviceMac, devices, activeLogs]);
 
-  // สถานะระบบ (ใช้ activeThresholds แยกตามอุปกรณ์)
   const status = useMemo(() => {
     if (waterInTank >= activeThresholds.critical) return { label: "CRITICAL", color: "text-red-500", bg: "bg-red-500", icon: <ShieldAlert size={24}/>, border: "border-red-500", glow: "shadow-red-500/20" };
     if (waterInTank >= activeThresholds.warning) return { label: "WARNING", color: "text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle size={24}/>, border: "border-orange-500", glow: "shadow-orange-500/20" };
     return { label: "STABLE", color: "text-emerald-500", bg: "bg-emerald-500", icon: <CheckCircle2 size={24}/>, border: "border-emerald-500", glow: "shadow-emerald-500/20" };
   }, [waterInTank, activeThresholds]);
 
-  // ข้อมูลเชิงลึก 
+  // 🔮 Prediction Insights (ปรับปรุงใหม่)
   const insights = useMemo(() => {
-    if (activeLogs.length === 0) {
-      return { maxWater: 0, avgSignal: 0, rateOfChange: 0, timeToFlood: null, lastUpdate: 'Waiting...' };
+    if (activeLogs.length < 2) {
+      return { maxWater: 0, avgSignal: 0, rateOfChange: 0, timeToFlood: null, lastUpdate: 'Waiting...', percentToCritical: 0 };
     }
-    
     try {
       const latestLog = activeLogs[activeLogs.length - 1];
-      const allWater = activeLogs.map(l => calculateWater(l.level));
-      
-      const latestTime = new Date(latestLog?.createdAt || Date.now()).getTime();
-      const oldLog = activeLogs.find(l => new Date(l.createdAt).getTime() >= latestTime - 3600000) || activeLogs[0];
-      const hourDiff = (latestTime - new Date(oldLog.createdAt).getTime()) / 3600000;
-      const rate = hourDiff > 0 ? (calculateWater(latestLog.level) - calculateWater(oldLog.level)) / hourDiff : 0;
+      const device = devices.find(d => d.mac === (latestLog.mac || latestLog.device_id));
+      const h = device?.installHeight ?? 62.0;
+      const crit = device?.criticalThreshold ?? 10.0;
+      const currentWater = calculateWater(latestLog.level, h);
 
-      let timeStr = null;
-      if (rate > 0 && waterInTank < activeThresholds.critical) {
-        const mins = Math.round(((activeThresholds.critical - waterInTank) / rate) * 60);
-        timeStr = mins > 0 ? `${mins} นาที` : "เร็วๆ นี้";
+      const allWater = activeLogs.map(l => calculateWater(l.level, h));
+      const latestTime = new Date(latestLog?.createdAt || Date.now()).getTime();
+      const thirtyMinsAgo = latestTime - (30 * 60000);
+      const oldLog = activeLogs.find(l => new Date(l.createdAt).getTime() >= thirtyMinsAgo) || activeLogs[0];
+      
+      const hourDiff = (latestTime - new Date(oldLog.createdAt).getTime()) / 3600000;
+      const rate = hourDiff > 0 ? (currentWater - calculateWater(oldLog.level, h)) / hourDiff : 0;
+
+      let timeStr = "คงที่ (Stable)";
+      if (rate > 0.1 && currentWater < crit) {
+        const mins = Math.round(((crit - currentWater) / rate) * 60);
+        timeStr = mins > 60 ? `ประมาณ ${Math.floor(mins/60)} ชม. ${mins%60} นาที` : `${mins} นาที`;
+      } else if (currentWater >= crit) {
+        timeStr = "วิกฤตแล้ว (Now)";
       }
 
       return { 
@@ -125,40 +130,28 @@ export default function Home() {
         avgSignal: latestLog?.signal === 99 ? 0 : (latestLog?.signal || 0), 
         rateOfChange: rate, 
         timeToFlood: timeStr,
-        lastUpdate: latestLog?.createdAt ? new Date(latestLog.createdAt).toLocaleTimeString('th-TH') : 'N/A'
+        lastUpdate: latestLog?.createdAt ? new Date(latestLog.createdAt).toLocaleTimeString('th-TH') : 'N/A',
+        percentToCritical: Math.min(100, (currentWater / crit) * 100)
       };
     } catch (e) {
-      return { maxWater: 0, avgSignal: 0, rateOfChange: 0, timeToFlood: null, lastUpdate: 'Error' };
+      return { maxWater: 0, avgSignal: 0, rateOfChange: 0, timeToFlood: null, lastUpdate: 'Error', percentToCritical: 0 };
     }
-  }, [activeLogs, calculateWater, waterInTank, activeThresholds]);
+  }, [activeLogs, calculateWater, waterInTank, activeThresholds, devices]);
 
   const exportToCSV = () => {
-    if (!activeLogs || activeLogs.length === 0) {
-      alert("ไม่มีข้อมูลสำหรับดาวน์โหลดครับ");
-      return;
-    }
+    if (!activeLogs || activeLogs.length === 0) { alert("ไม่มีข้อมูลสำหรับดาวน์โหลดครับ"); return; }
     let csvContent = "วันที่,เวลา,อุปกรณ์ (MAC),ระดับน้ำ (cm),อุณหภูมิ (C),ความชื้น (%)\n";
     activeLogs.forEach((log: any) => {
-      const date = new Date(log.createdAt).toLocaleDateString('th-TH');
-      const time = new Date(log.createdAt).toLocaleTimeString('th-TH');
-      const deviceMac = log.mac || log.device_id || "Unknown";
-      const rawLevel = Number(log.level ?? 62.0);
-      let calcLevel = (62.0 - rawLevel);
-      if (rawLevel <= 0.5 || rawLevel > 75) calcLevel = 0;
-      if (calcLevel < 0) calcLevel = 0;
-      if (calcLevel > 40) calcLevel = 40;
-      const level = calcLevel.toFixed(2);
-      const temp = log.temperature ? Number(log.temperature).toFixed(1) : "0.0";
-      const hum = log.humidity || log.air_humidity ? Number(log.humidity || log.air_humidity).toFixed(1) : "0.0";
-      csvContent += `${date},${time},${deviceMac},${level},${temp},${hum}\n`;
+      const device = devices.find(d => d.mac === (log.mac || log.device_id));
+      const h = device?.installHeight ?? 62.0;
+      const calcLevel = calculateWater(log.level, h);
+      csvContent += `${new Date(log.createdAt).toLocaleDateString('th-TH')},${new Date(log.createdAt).toLocaleTimeString('th-TH')},${log.mac || log.device_id},${calcLevel.toFixed(2)},${(log.temperature || 0).toFixed(1)},${(log.humidity || log.air_humidity || 0).toFixed(1)}\n`;
     });
     const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    const dateStr = new Date().toISOString().split('T')[0];
-    const fileName = selectedDeviceMac === 'ALL' ? `WaterLevel_All_Devices_${dateStr}.csv` : `WaterLevel_${selectedDeviceMac}_${dateStr}.csv`;
-    link.setAttribute("download", fileName);
+    link.setAttribute("download", `WaterLevel_Report_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -166,22 +159,12 @@ export default function Home() {
 
   if (!isMounted) return null;
 
-  if (logs.length === 0 && devices.length === 0) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-[#020617] flex flex-col items-center justify-center gap-4">
-        <Loader2 className="animate-spin text-blue-500" size={48} />
-        <p className="text-sm font-black text-slate-400 uppercase tracking-widest">Initializing System...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-[#F1F5F9] dark:bg-[#020617] transition-all duration-500 font-sans pb-10">
       <header className="sticky top-0 z-[100] bg-white/70 dark:bg-slate-950/70 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 px-8 py-4 print:hidden">
-        {/* ... (Header เหมือนเดิม) ... */}
         <div className="max-w-[1600px] mx-auto flex justify-between items-center">
           <div className="flex items-center gap-6">
-            <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl text-white shadow-lg"><Waves size={24}/></div>
+            <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl text-white shadow-lg shadow-blue-500/20"><Waves size={24}/></div>
             <div className="relative">
               <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="flex items-center gap-3 bg-slate-100 dark:bg-slate-900 px-5 py-2.5 rounded-2xl text-xs font-black uppercase tracking-widest border border-slate-200 dark:border-slate-800 transition-all hover:bg-slate-200 dark:hover:bg-slate-800">
                 <Server size={16} className="text-blue-500" />
@@ -201,25 +184,68 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-             <button onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')} className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-blue-500"><Sun size={20}/></button>
+             <button onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')} className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-blue-500 transition-colors"><Sun size={20}/></button>
              <Link href="/admin" className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-blue-500 transition-all"><Settings size={20} /></Link>
           </div>
         </div>
       </header>
 
       <main className="max-w-[1600px] mx-auto p-6 space-y-8">
+        
+        {/* 🔮 NEW: Prediction Visualizer Card */}
+        <div className="bg-gradient-to-br from-slate-900 to-slate-800 dark:from-indigo-950 dark:to-slate-900 p-8 rounded-[3rem] text-white shadow-2xl relative overflow-hidden group border border-white/5 transition-all hover:shadow-indigo-500/10">
+          <div className="relative z-10 flex flex-col lg:flex-row justify-between items-center gap-10">
+            <div className="space-y-4 text-center lg:text-left flex-1">
+              <div className="inline-flex items-center gap-2 bg-blue-500/20 text-blue-400 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.2em] border border-blue-500/20">
+                <Zap size={14} className="fill-blue-400" /> AI Forecast Analysis
+              </div>
+              <h2 className="text-3xl md:text-4xl font-black tracking-tight leading-tight">
+                {insights.rateOfChange > 0.5 
+                  ? `น้ำกำลังสูงขึ้น! คาดว่าจะถึงขีดจำกัดใน ${insights.timeToFlood}` 
+                  : insights.rateOfChange < -0.5 
+                    ? "ระดับน้ำกำลังลดลงอย่างต่อเนื่อง" 
+                    : "สถานการณ์ระดับน้ำปกติดี (Stable)"}
+              </h2>
+              <p className="text-slate-400 text-sm font-medium">
+                วิเคราะห์จากอัตราความเร็วปัจจุบัน: <span className="text-white font-bold">{insights.rateOfChange.toFixed(2)} cm/h</span>
+              </p>
+            </div>
+
+            <div className="w-full lg:w-96 space-y-4 bg-white/5 p-6 rounded-[2rem] border border-white/5 backdrop-blur-md">
+              <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-400">
+                <span>Current Capacity</span>
+                <span className={insights.percentToCritical > 80 ? 'text-red-400' : 'text-emerald-400'}>{insights.percentToCritical.toFixed(0)}% to Critical</span>
+              </div>
+              <div className="h-4 w-full bg-slate-700/50 rounded-full overflow-hidden p-1">
+                <div 
+                  className={`h-full rounded-full transition-all duration-1000 ${insights.percentToCritical > 80 ? 'bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]' : insights.percentToCritical > 50 ? 'bg-orange-500' : 'bg-emerald-500'}`}
+                  style={{ width: `${insights.percentToCritical}%` }}
+                />
+              </div>
+              <div className="flex justify-between items-center pt-2">
+                 <div className="flex gap-2">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-[9px] font-bold text-slate-500 uppercase">Live Processing</span>
+                 </div>
+                 <span className="text-[10px] font-bold text-blue-400 uppercase">Update: {insights.lastUpdate}</span>
+              </div>
+            </div>
+          </div>
+          <Activity className="absolute -right-20 -bottom-20 size-80 text-white/[0.03] -rotate-12 group-hover:rotate-0 transition-transform duration-1000" />
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className={`lg:col-span-4 p-8 rounded-[2.5rem] bg-white dark:bg-slate-900 border-2 ${status.border} shadow-2xl flex flex-col justify-between relative overflow-hidden group transition-all duration-300 ${status.glow}`}>
+          <div className={`lg:col-span-4 p-8 rounded-[3rem] bg-white dark:bg-slate-900 border-2 ${status.border} shadow-2xl flex flex-col justify-between relative overflow-hidden group transition-all duration-300 ${status.glow}`}>
              <div className="relative z-10">
                 <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Live Status</span>
                 <div className={`text-5xl font-black mt-2 ${status.color} tracking-tighter`}>{status.label}</div>
              </div>
-             <div className="mt-8 relative z-10 flex items-end justify-between">
+             <div className="mt-12 relative z-10 flex items-end justify-between">
                 <div>
-                  <div className="text-sm font-bold text-slate-500 uppercase">Live Water</div>
+                  <div className="text-sm font-bold text-slate-500 uppercase">Current Level</div>
                   <div className="text-6xl font-black text-slate-800 dark:text-white tabular-nums">{waterInTank.toFixed(1)}<span className="text-xl ml-2 text-slate-400">cm</span></div>
                 </div>
-                <div className={`p-4 rounded-3xl ${status.bg} text-white shadow-xl animate-bounce`}>{status.icon}</div>
+                <div className={`p-5 rounded-[1.5rem] ${status.bg} text-white shadow-2xl animate-bounce`}>{status.icon}</div>
              </div>
           </div>
           <div className="lg:col-span-8 grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -231,37 +257,35 @@ export default function Home() {
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-          <div className="xl:col-span-8 bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl min-h-[500px]">
-             <div className="h-[420px]">
+          <div className="xl:col-span-8 bg-white dark:bg-slate-900 p-8 rounded-[3rem] border border-slate-200 dark:border-slate-800 shadow-xl min-h-[550px]">
+             <div className="h-[450px]">
                 <WaterLevelChart data={activeLogs} isDark={resolvedTheme === 'dark'} devices={devices} timeframe={timeframe} selectedDeviceMac={selectedDeviceMac} />
              </div>
           </div>
-          <div className="xl:col-span-4"><WaterTank level={waterInTank} /></div>
+          <div className="xl:col-span-4"><WaterTank level={waterInTank} warningThreshold={activeThresholds.warning} criticalThreshold={activeThresholds.critical} /></div>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-           <div className="xl:col-span-7 rounded-[2.5rem] overflow-hidden border border-slate-200 dark:border-slate-800 shadow-xl bg-white dark:bg-slate-900 p-4">
-              <div className="h-[500px] rounded-[2rem] overflow-hidden">
+           <div className="xl:col-span-7 rounded-[3rem] overflow-hidden border border-slate-200 dark:border-slate-800 shadow-xl bg-white dark:bg-slate-900 p-4">
+              <div className="h-[550px] rounded-[2.5rem] overflow-hidden">
                 <DeviceMap devices={devices.filter(d => selectedDeviceMac === 'ALL' || d.mac === selectedDeviceMac)} />
               </div>
            </div>
            
-           <div className="xl:col-span-5 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden flex flex-col h-[532px]">
-              <div className="p-4 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/50">
+           <div className="xl:col-span-5 bg-white dark:bg-slate-900 rounded-[3rem] border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden flex flex-col h-[582px]">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/50">
                  <div>
                    <h3 className="font-black uppercase text-slate-700 dark:text-white tracking-widest text-xs flex items-center gap-2">
-                     <Database size={16} className="text-indigo-500"/> Records
+                     <Database size={16} className="text-indigo-500"/> Records Log
                    </h3>
-                   <span className="text-[10px] font-bold text-slate-400 mt-1 block">Sync: {insights.lastUpdate}</span>
+                   <span className="text-[10px] font-bold text-slate-400 mt-1 block uppercase">Sync Time: {insights.lastUpdate}</span>
                  </div>
                  
-                 <button onClick={exportToCSV} className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-emerald-500/30 active:scale-95">
-                   <Download size={14} /> <span className="hidden sm:inline">Export CSV</span>
+                 <button onClick={exportToCSV} className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-emerald-500/30 active:scale-95">
+                   <Download size={14} /> Export CSV
                  </button>
               </div>
-
               <div className="flex-grow overflow-auto">
-                 {/* 🌟 ส่งตัวแปร devices เข้าไปในตารางด้วย เพื่อให้มันรู้ค่าเกณฑ์ของแต่ละตัว */}
                  <RecentLogs logs={activeLogs} devices={devices} /> 
               </div>
            </div>
@@ -279,10 +303,10 @@ function StatCard({ icon, label, value, unit, color }: any) {
     indigo: "text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10"
   };
   return (
-    <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-md">
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 ${colors[color]}`}>{icon}</div>
+    <div className="bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-md transition-transform hover:-translate-y-1">
+      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-5 ${colors[color]}`}>{icon}</div>
       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</div>
-      <div className="text-2xl font-black text-slate-800 dark:text-white mt-1">{value} <span className="text-[10px] text-slate-400">{unit}</span></div>
+      <div className="text-2xl font-black text-slate-800 dark:text-white mt-1 tabular-nums">{value} <span className="text-[10px] text-slate-400 font-bold ml-1">{unit}</span></div>
     </div>
   );
 }

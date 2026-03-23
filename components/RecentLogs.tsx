@@ -13,7 +13,7 @@ interface Log {
   device_id?: string;
 }
 
-// 🌟 รับค่า devices เพิ่มเข้ามา
+// 🌟 รับค่า devices เพิ่มเข้ามาเพื่อเอาระยะติดตั้งและเกณฑ์แจ้งเตือน
 export default function RecentLogs({ logs, devices }: { logs: Log[], devices?: any[] }) {
   
   return (
@@ -29,20 +29,25 @@ export default function RecentLogs({ logs, devices }: { logs: Log[], devices?: a
         <tbody className="divide-y divide-slate-100 dark:divide-white/5">
           {[...logs].reverse().map((log, index) => {
             
-            // ✅ 1. คำนวณระดับน้ำ
-            const rawDist = Number(log.level) || 84.0;
-            let waterLevel = (84.0 - rawDist) - 5.0;
-            if (rawDist <= 0.5 || rawDist > 90) waterLevel = 0;
-            if (waterLevel > 40) waterLevel = 40;
-            if (waterLevel < 0) waterLevel = 0;
-
-            // 🌟 2. ค้นหาเกณฑ์ของ "อุปกรณ์ตัวนี้" โดยเฉพาะ
+            // 🌟 1. ค้นหาข้อมูลอุปกรณ์เพื่อดึงค่า Install Height และเกณฑ์ต่างๆ
             const deviceMac = log.mac || log.device_id;
             const logDevice = devices?.find(d => d.mac === deviceMac);
+            
+            // ใช้ค่าจาก Admin ถ้าไม่มีให้ใช้ค่า Default 62.0
+            const currentInstallHeight = logDevice?.installHeight ?? 62.0;
             const currentWarningThresh = logDevice?.warningThreshold ?? 5.0;
             const currentCriticalThresh = logDevice?.criticalThreshold ?? 10.0;
 
-            // ✅ 3. ปรับสีตามเกณฑ์ของอุปกรณ์ตัวนั้น
+            // ✅ 2. คำนวณระดับน้ำ (V4.5 Dynamic Formula)
+            const rawDist = Number(log.level) || currentInstallHeight;
+            let waterLevel = (currentInstallHeight - rawDist);
+            
+            // ป้องกันค่า Noise และจำกัดช่วงข้อมูล
+            if (rawDist <= 0.5 || rawDist > (currentInstallHeight + 10)) waterLevel = 0;
+            if (waterLevel > 40) waterLevel = 40;
+            if (waterLevel < 0) waterLevel = 0;
+
+            // ✅ 3. ปรับสีตามเกณฑ์ของอุปกรณ์ตัวนั้นที่ตั้งค่าไว้
             let displayStatus = 'ปลอดภัย';
             let statusClasses = 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400';
 

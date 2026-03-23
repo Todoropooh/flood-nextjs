@@ -4,20 +4,27 @@ const DeviceSchema = new mongoose.Schema({
   name: { type: String, required: true },
   mac: { type: String, required: true, unique: true }, 
   
-  // 🌟 ข้อมูลตำแหน่ง (ปลดล็อกเพื่อความยืดหยุ่น)
+  // 🌟 ข้อมูลตำแหน่ง
   location: { type: String, default: '' }, 
   
   type: { type: String, default: 'ESP32' },
   status: { type: String, default: 'Offline' },
   image: { type: String, default: '' }, 
   
-  // 📍 พิกัด GPS สำหรับแสดงผลบนแผนที่ (Default: สุรินทร์)
+  // 📍 พิกัด GPS
   lat: { type: Number, default: 14.8824 }, 
   lng: { type: Number, default: 103.4936 }, 
   
-  // 🟢 ขีดจำกัดการแจ้งเตือน
-  warningThreshold: { type: Number, default: 3.0 },
-  criticalThreshold: { type: Number, default: 7.0 },
+  // 📏 [NEW] ระยะติดตั้งเซนเซอร์จากพื้น (Install Height)
+  // ใช้สำหรับคำนวณระดับน้ำ: (installHeight - ระยะที่เซนเซอร์อ่านได้)
+  installHeight: { 
+    type: Number, 
+    default: 62.0 
+  },
+
+  // 🟢 ขีดจำกัดการแจ้งเตือน (เกณฑ์สีส้ม/แดง)
+  warningThreshold: { type: Number, default: 5.0 },
+  criticalThreshold: { type: Number, default: 10.0 },
 
   // 📊 ข้อมูลล่าสุดจากเซ็นเซอร์
   waterLevel: { type: Number, default: 0 },
@@ -27,14 +34,12 @@ const DeviceSchema = new mongoose.Schema({
   // 📡 การเชื่อมต่อ
   lastPing: { type: Date, default: Date.now },
 
-  // 🎛️ [NEW] ส่วนการควบคุมจากระยะไกล (Remote Control)
-  // ใช้สำหรับสั่ง เปิด-ปิด การทำงานของโหนดนั้นๆ ผ่านหน้าเว็บ
+  // 🎛️ ส่วนการควบคุมจากระยะไกล (Remote Control)
   isActive: { 
     type: Boolean, 
     default: true 
   },
   
-  // ใช้สำหรับสั่ง Mute/Unmute เสียง Buzzer จากหน้าเว็บ
   isBuzzerEnabled: { 
     type: Boolean, 
     default: true 

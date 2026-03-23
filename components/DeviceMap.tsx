@@ -29,19 +29,30 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
     ? [devices[0].lat, devices[0].lng] 
     : defaultCenter;
 
-  const createCustomIcon = (device: any) => {
-    // ✅ 1. คำนวณระดับน้ำ (V4.4 Logic)
-    const rawDist = Number(device.waterLevel ?? device.level ?? 84.0);
-    let wl = (84.0 - rawDist) - 5.0;
+  // 🌟 ฟังก์ชันคำนวณระดับน้ำแบบ Dynamic ตามระยะติดตั้งของแต่ละโหนด
+  const calculateWaterForDevice = (device: any) => {
+    const installHeight = device.installHeight ?? 62.0;
+    const rawDist = Number(device.waterLevel ?? device.level ?? installHeight);
     
-    // Noise Filter
-    if (rawDist <= 0.5 || rawDist > 90) wl = 0; 
+    let wl = (installHeight - rawDist);
+    
+    // Noise Filter อิงตามระยะติดตั้งจริง
+    if (rawDist <= 0.5 || rawDist > (installHeight + 10)) wl = 0; 
     if (wl < 0) wl = 0;
     if (wl > 40) wl = 40;
     
-    // ✅ 2. ปรับเกณฑ์สีหมุด (แดง >= 10.0, ส้ม >= 5.0)
-    const isCritical = wl >= 10.0;
-    const isWarning = wl >= 5.0;
+    return wl;
+  };
+
+  const createCustomIcon = (device: any) => {
+    const wl = calculateWaterForDevice(device);
+    
+    // 🌟 ดึงเกณฑ์แจ้งเตือนรายอุปกรณ์
+    const warningThresh = device.warningThreshold ?? 5.0;
+    const criticalThresh = device.criticalThreshold ?? 10.0;
+
+    const isCritical = wl >= criticalThresh;
+    const isWarning = wl >= warningThresh;
     
     const dotColor = isCritical ? 'bg-red-500' : isWarning ? 'bg-orange-500' : 'bg-emerald-500';
     const textColor = isCritical ? 'text-red-600 dark:text-red-400' : isWarning ? 'text-orange-600 dark:text-orange-400' : 'text-emerald-600 dark:text-emerald-400';
@@ -54,7 +65,7 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
           <span class="text-[12px] font-black ${textColor}">${wl.toFixed(1)} cm</span>
         </div>
         <div class="w-5 h-5 rounded-full ${dotColor} ${glowClass} border-4 border-white dark:border-[#020617] relative">
-           <div class="absolute inset-0 rounded-full ${dotColor} animate-ping opacity-60"></div>
+            <div class="absolute inset-0 rounded-full ${dotColor} animate-ping opacity-60"></div>
         </div>
       </div>
     `;
@@ -68,16 +79,13 @@ export default function DeviceMap({ devices = [], selectedDevice }: { devices: a
     });
   };
 
-  // ✅ 3. ปรับเกณฑ์ข้อความใน Popup (แดง >= 10.0, ส้ม >= 5.0)
   const getStatusInfo = (device: any) => {
-    const rawDist = Number(device.waterLevel ?? device.level ?? 84.0);
-    let wl = (84.0 - rawDist) - 5.0;
-    if (rawDist <= 0.5 || rawDist > 90) wl = 0; 
-    if (wl < 0) wl = 0;
-    if (wl > 40) wl = 40;
+    const wl = calculateWaterForDevice(device);
+    const warningThresh = device.warningThreshold ?? 5.0;
+    const criticalThresh = device.criticalThreshold ?? 10.0;
 
-    if (wl >= 10.0) return { text: 'อันตราย (Critical)', color: 'text-red-600 dark:text-red-400' };
-    if (wl >= 5.0) return { text: 'เฝ้าระวัง (Warning)', color: 'text-orange-600 dark:text-orange-400' };
+    if (wl >= criticalThresh) return { text: 'อันตราย (Critical)', color: 'text-red-600 dark:text-red-400' };
+    if (wl >= warningThresh) return { text: 'เฝ้าระวัง (Warning)', color: 'text-orange-600 dark:text-orange-400' };
     return { text: 'ปกติ (Stable)', color: 'text-emerald-600 dark:text-emerald-400' };
   };
 

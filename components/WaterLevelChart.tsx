@@ -33,7 +33,6 @@ export default function WaterLevelChart({ data = [], isDark, timeframe = 'day', 
     }
 
     const datasets: any[] = [];
-    // พาเลทสีแบบ Enterprise
     const colors = {
       blue: { stroke: '#3b82f6', fill: '#3b82f620' },
       orange: { stroke: '#f97316', fill: '#f9731620' },
@@ -58,16 +57,19 @@ export default function WaterLevelChart({ data = [], isDark, timeframe = 'day', 
                      : `💧 ${dev.name} (%)`;
 
       const dataPoints = labels.map((_, i) => {
-        // ค้นหาข้อมูลที่ใกล้เคียงช่วงเวลานั้น
         const logIndex = Math.floor((i / labels.length) * deviceLogs.length);
         const log = deviceLogs[logIndex];
         if (!log) return null;
 
         if (viewMode === 'LEVEL') {
-          const raw = Number(log.level || 84.0);
-          let v = (84.0 - raw) - 5.0;
-          // กรอง Noise แบบ V4.4
-          if (raw <= 0.5 || raw > 90) v = 0;
+          // 🌟 [ปรับปรุง] ดึงระยะติดตั้ง (installHeight) ของอุปกรณ์ตัวนี้มาคำนวณกราฟ
+          const h = dev.installHeight ?? 62.0; 
+          const raw = Number(log.level || h);
+          
+          let v = (h - raw); 
+          
+          // กรอง Noise อิงตามระยะติดตั้งจริง
+          if (raw <= 0.5 || raw > (h + 10)) v = 0;
           return v < 0 ? 0 : (v > 40 ? 40 : v);
         }
         return viewMode === 'TEMP' ? Number(log.temperature) : Number(log.air_humidity || log.humidity);
@@ -123,7 +125,6 @@ export default function WaterLevelChart({ data = [], isDark, timeframe = 'day', 
       },
       y: {
         beginAtZero: true,
-        // ปรับ Max ตามโหมดที่ดู
         max: viewMode === 'LEVEL' ? 45 : viewMode === 'TEMP' ? 60 : 100,
         grid: { color: isDark ? '#1e293b' : '#f1f5f9' },
         ticks: { color: isDark ? '#64748b' : '#94a3b8', font: { weight: 'bold' } }
@@ -142,7 +143,6 @@ export default function WaterLevelChart({ data = [], isDark, timeframe = 'day', 
 
   return (
     <div className="w-full h-full flex flex-col">
-      {/* ปุ่มสลับโหมดแบบ Modern */}
       <div className="flex flex-wrap gap-2 mb-6">
         <button 
           onClick={() => setViewMode('LEVEL')} 
@@ -164,7 +164,6 @@ export default function WaterLevelChart({ data = [], isDark, timeframe = 'day', 
         </button>
       </div>
 
-      {/* กราฟขยายเต็มพื้นที่ */}
       <div className="flex-grow min-h-[350px]">
         <Line data={chartData} options={options} />
       </div>

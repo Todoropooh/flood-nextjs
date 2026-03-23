@@ -5,11 +5,23 @@ import Device from '@/db/models/Device';
 export const dynamic = 'force-dynamic';
 
 // ==============================
-// 🟢 GET: ดึงข้อมูลอุปกรณ์ทั้งหมด
+// 🟢 GET: ดึงข้อมูลอุปกรณ์
 // ==============================
-export async function GET() {
+export async function GET(req: Request) {
   try {
     await connectDB();
+    
+    // 🌟 เพิ่มระบบดึงข้อมูลรายตัวด้วย MAC (สำหรับ ESP32 มาเรียกเอาค่าไปใช้)
+    const { searchParams } = new URL(req.url);
+    const mac = searchParams.get('mac');
+
+    if (mac) {
+      const device = await Device.findOne({ mac: mac });
+      if (device) return NextResponse.json(device);
+      return NextResponse.json({ error: 'Device not found' }, { status: 404 });
+    }
+
+    // ถ้าไม่มี MAC ให้ส่งข้อมูลทั้งหมด (สำหรับหน้า Admin)
     const devices = await Device.find({}).sort({ createdAt: -1 });
     return NextResponse.json(devices);
   } catch (error) {
@@ -25,7 +37,7 @@ export async function POST(req: Request) {
     await connectDB();
     const body = await req.json();
 
-    // 🌟 บันทึกข้อมูลพร้อมฟิลด์ควบคุม (Remote Control)
+    // 🌟 เพิ่ม installHeight เข้าไปในการบันทึกข้อมูลใหม่
     const newDevice = await Device.create({
       name: body.name,
       mac: body.mac,
@@ -34,10 +46,11 @@ export async function POST(req: Request) {
       image: body.image || '', 
       lat: body.lat || 14.8824,
       lng: body.lng || 103.4936,
-      warningThreshold: body.warningThreshold || 3.0,
-      criticalThreshold: body.criticalThreshold || 7.0,
-      isActive: body.isActive !== undefined ? body.isActive : true, // 🌟 เพิ่มตรงนี้
-      isBuzzerEnabled: body.isBuzzerEnabled !== undefined ? body.isBuzzerEnabled : true, // 🌟 เพิ่มตรงนี้
+      installHeight: body.installHeight || 62.0, // 🌟 เพิ่มตรงนี้
+      warningThreshold: body.warningThreshold || 5.0,
+      criticalThreshold: body.criticalThreshold || 10.0,
+      isActive: body.isActive !== undefined ? body.isActive : true,
+      isBuzzerEnabled: body.isBuzzerEnabled !== undefined ? body.isBuzzerEnabled : true,
       status: 'Offline'
     });
 
@@ -57,14 +70,14 @@ export async function PUT(req: Request) {
     await connectDB();
     const body = await req.json();
     
-    // แยก _id ออกมา เพื่อหาตัวที่จะอัปเดต
     const { _id, ...updateData } = body;
     
     if (!_id) {
       return NextResponse.json({ error: 'ไม่พบ ID ของอุปกรณ์' }, { status: 400 });
     }
 
-    // 🌟 ใช้ $set เพื่อเจาะจงอัปเดตทุกฟิลด์ที่ส่งมาจากหน้าฟอร์ม (รวมถึง Boolean false ด้วย)
+    // 🌟 ตรงนี้ดีอยู่แล้วครับ $set: updateData จะเหมาเอาทุกอย่างในฟอร์ม 
+    // (รวมถึง installHeight ที่เราส่งมาใหม่) ไปอัปเดตลง DB ทันที
     const updatedDevice = await Device.findByIdAndUpdate(
       _id, 
       { $set: updateData }, 
@@ -75,7 +88,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'ไม่พบอุปกรณ์ในระบบ' }, { status: 404 });
     }
 
-    console.log("✅ Updated Device:", updatedDevice.name, "isActive:", updatedDevice.isActive);
+    console.log("✅ Updated Device:", updatedDevice.name, "H:", updatedDevice.installHeight);
     return NextResponse.json(updatedDevice, { status: 200 });
   } catch (error: any) {
     console.error("PUT Error:", error.message);
