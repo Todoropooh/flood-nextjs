@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-// ✅ ถอย 4 ชั้นเพื่อออกไปหาโฟลเดอร์ db นอก app
+// ✅ ถอย 4 ชั้นเพื่อไปหา db ที่อยู่นอกสุด
 import connectMongoDB from "../../../../db/mongodb"; 
 import User from "../../../../db/models/User";
 
@@ -8,7 +8,6 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     await connectMongoDB();
     const { id } = params;
 
-    // อัปเดตสถานะเป็น Approved
     const updatedUser = await User.findByIdAndUpdate(
       id,
       { isApproved: true },
@@ -30,13 +29,9 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
   try {
     await connectMongoDB();
     const { id } = params;
-    
-    // ปฏิเสธการสมัคร (ลบ User ทิ้ง)
     await User.findByIdAndDelete(id);
-    
     return NextResponse.json({ message: "ปฏิเสธและลบข้อมูลสำเร็จ ❌" }, { status: 200 });
   } catch (error) {
-    console.error("Reject Error:", error);
-    return NextResponse.json({ error: "เกิดข้อผิดพลาดในการลบข้อมูล" }, { status: 500 });
+    return NextResponse.json({ error: "เกิดข้อผิดพลาด" }, { status: 500 });
   }
 }
