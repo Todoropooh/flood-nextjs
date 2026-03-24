@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { signIn } from 'next-auth/react';
-import { Waves, Loader2, Check, Eye, EyeOff } from 'lucide-react';
+import { Waves, Loader2, Check, Eye, EyeOff, UserPlus } from 'lucide-react';
+import Link from 'next/link'; // 🌟 อย่าลืม Import Link
 
 export default function LoginScreen() {
   const [username, setUsername] = useState("");
@@ -34,29 +35,25 @@ export default function LoginScreen() {
   };
 
   return (
-    // 🌟 1. Main Container: เอา bg-color ออก เปลี่ยนเป็น relative + overflow-hidden เพื่อขังรูปภาพไว้ด้านหลัง
-    <div className="min-h-screen flex items-center justify-center p-4 sm:p-8 font-sans transition-all duration-300 relative overflow-hidden">
+    // 🌟 1. Main Container
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-8 font-sans transition-all duration-300 relative overflow-hidden bg-slate-50 dark:bg-slate-950">
       
-      {/* 🌟 2. 🏞️ รูปภาพน้ำท่วมเบลอ (Background Layer) */}
+      {/* 🌟 2. Background Layer */}
       <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat z-0 blur-md scale-105 pointer-events-none"
-        // 🔗 เปลี่ยน URL รูปภาพได้ตรงนี้นะครับ
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat z-0 blur-md scale-105 pointer-events-none transition-all"
         style={{ backgroundImage: "url('https://images.unsplash.com/photo-1547683905-f686c993aae5?q=80&w=1974&auto=format&fit=crop')" }}
       >
-        {/* Layer สีดำจางๆ เพื่อให้กล่องสีขาวข้างหน้าเด่นขึ้น */}
-        <div className="absolute inset-0 bg-slate-900/30"></div>
+        <div className="absolute inset-0 bg-slate-900/30 dark:bg-black/60 transition-colors"></div>
       </div>
 
-      {/* 🌟 3. Front Card Container: ปรับสีพื้นหลังให้โปร่งแสงนิดๆ (Glassmorphism) และดันให้อยู่เหนือรูปภาพ (z-10) */}
-      <div className="w-full max-w-5xl bg-white/95 backdrop-blur-sm rounded-[2rem] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] flex flex-col md:flex-row overflow-hidden relative z-10">
+      {/* 🌟 3. Front Card Container */}
+      <div className="w-full max-w-5xl bg-white/95 dark:bg-slate-900/90 backdrop-blur-sm rounded-[2.5rem] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] flex flex-col md:flex-row overflow-hidden relative z-10 border border-transparent dark:border-slate-800 transition-all">
 
-        {/* 🌊 ด้านซ้าย: พื้นหลังสีน้ำเงิน + เอฟเฟกต์คลื่นน้ำ */}
-        <div className="relative w-full md:w-5/12 bg-gradient-to-b from-[#1155FA] to-[#0A3DCD] text-white flex flex-col items-center justify-center px-10 py-16 md:py-24 md:pr-24 min-h-[350px] md:min-h-[600px] z-10">
+        {/* 🌊 ด้านซ้าย: Branding */}
+        <div className="relative w-full md:w-5/12 bg-gradient-to-b from-[#1155FA] to-[#0A3DCD] dark:from-[#1d4ed8] dark:to-[#1e3a8a] text-white flex flex-col items-center justify-center px-10 py-16 md:py-24 md:pr-24 min-h-[350px] md:min-h-[600px] z-10">
           
-          {/* Content */}
           <div className="relative z-20 flex flex-col items-center text-center">
-            {/* โลโก้วงกลมสีขาว */}
-            <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-[0_8px_30px_rgba(0,0,0,0.12)] mb-6 transform transition-transform hover:scale-105">
+            <div className="w-24 h-24 bg-white dark:bg-slate-100 rounded-full flex items-center justify-center shadow-[0_8px_30px_rgba(0,0,0,0.12)] mb-6 transform transition-transform hover:scale-105">
               <Waves size={48} className="text-[#1155FA]" />
             </div>
             
@@ -74,49 +71,31 @@ export default function LoginScreen() {
             </div>
           </div>
 
-          {/* 💧 หยดน้ำตกแต่ง */}
-          <div className="absolute top-[15%] left-[20%] w-3 h-3 bg-white/20 rounded-full animate-pulse" />
-          <div className="absolute top-[40%] left-[10%] w-4 h-4 bg-white/30 rounded-full animate-bounce" style={{ animationDuration: '3s' }} />
-          <div className="absolute bottom-[25%] left-[25%] w-2 h-2 bg-white/40 rounded-full animate-ping" style={{ animationDuration: '4s' }} />
-
-          {/* 🌊 เอฟเฟกต์คลื่นน้ำ (Water Wave) สำหรับ "จอคอม" */}
+          {/* SVG Wave Decorations */}
           <div className="hidden md:block absolute top-0 right-[-1px] h-full w-[120px] z-0 pointer-events-none">
-            <svg viewBox="0 0 100 800" preserveAspectRatio="none" className="w-full h-full text-white/95 fill-current">
-              {/* คลื่นชั้นหลัง (โปร่งใส) */}
+            <svg viewBox="0 0 100 800" preserveAspectRatio="none" className="w-full h-full text-white/95 dark:text-slate-900/90 fill-current transition-colors">
               <path d="M100,0 C30,150 120,300 40,500 C-20,700 80,800 100,800 Z" fillOpacity="0.2" />
-              {/* คลื่นชั้นหน้า (สีขาวทึบกลืนไปกับฟอร์ม) */}
               <path d="M100,0 C70,200 150,450 20,650 C-20,750 70,800 100,800 Z" />
-            </svg>
-          </div>
-
-          {/* 🌊 เอฟเฟกต์คลื่นน้ำ (Water Wave) สำหรับ "จอมือถือ" */}
-          <div className="block md:hidden absolute bottom-[-1px] left-0 w-full h-[80px] z-0 pointer-events-none">
-            <svg viewBox="0 0 800 100" preserveAspectRatio="none" className="w-full h-full text-white/95 fill-current">
-              {/* คลื่นชั้นหลัง (โปร่งใส) */}
-              <path d="M0,100 C150,30 300,120 500,40 C700,-20 800,80 800,100 Z" fillOpacity="0.2" />
-              {/* คลื่นชั้นหน้า (สีขาวทึบกลืนไปกับฟอร์ม) */}
-              <path d="M0,100 C200,70 450,150 650,20 C750,-20 800,70 800,100 Z" />
             </svg>
           </div>
         </div>
 
-        {/* 📝 ด้านขวา: ฟอร์ม Login */}
+        {/* 📝 ด้านขวา: Login Form */}
         <div className="w-full md:w-7/12 p-10 sm:p-16 md:p-20 md:pl-28 flex flex-col justify-center relative z-20">
           
-          <h3 className="text-2xl md:text-3xl font-black text-slate-800 mb-10 text-center md:text-left select-none">
+          <h3 className="text-2xl md:text-3xl font-black text-slate-800 dark:text-white mb-10 text-center md:text-left select-none">
             Login to your account
           </h3>
 
           <form onSubmit={handleLogin} className="space-y-8 max-w-sm mx-auto md:mx-0 w-full">
             
-            {/* Input: Username */}
             <div className="space-y-2 relative group">
-              <label className="text-[13px] font-bold text-slate-800 select-none">Username</label>
+              <label className="text-[13px] font-bold text-slate-800 dark:text-slate-300 select-none">Username</label>
               <div className="relative">
                 <input
                   type="text"
                   placeholder="Enter your username"
-                  className="w-full pb-3 pt-1 border-b-2 border-slate-200 outline-none focus:border-[#1155FA] transition-colors text-slate-700 font-medium placeholder:text-slate-400 placeholder:font-normal bg-transparent"
+                  className="w-full pb-3 pt-1 border-b-2 border-slate-200 dark:border-slate-700 outline-none focus:border-[#1155FA] dark:focus:border-blue-500 transition-colors text-slate-700 dark:text-slate-100 font-medium placeholder:text-slate-400 dark:placeholder:text-slate-600 placeholder:font-normal bg-transparent"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
@@ -127,14 +106,13 @@ export default function LoginScreen() {
               </div>
             </div>
 
-            {/* Input: Password */}
             <div className="space-y-2 relative group">
-              <label className="text-[13px] font-bold text-slate-800 select-none">Password</label>
+              <label className="text-[13px] font-bold text-slate-800 dark:text-slate-300 select-none">Password</label>
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
                   placeholder="Enter your password"
-                  className="w-full pb-3 pt-1 pr-10 border-b-2 border-slate-200 outline-none focus:border-[#1155FA] transition-colors text-slate-700 font-medium placeholder:text-slate-400 placeholder:font-normal bg-transparent"
+                  className="w-full pb-3 pt-1 pr-10 border-b-2 border-slate-200 dark:border-slate-700 outline-none focus:border-[#1155FA] dark:focus:border-blue-500 transition-colors text-slate-700 dark:text-slate-100 font-medium placeholder:text-slate-400 dark:placeholder:text-slate-600 placeholder:font-normal bg-transparent"
                   value={password}
                   onChange={(e) => {
                     setPassword(e.target.value);
@@ -142,44 +120,55 @@ export default function LoginScreen() {
                   }}
                   required
                 />
-                
-                {/* ปุ่มลูกตาเปิด/ปิด */}
                 <button 
                   type="button" 
                   onClick={() => setShowPassword(!showPassword)} 
-                  className="absolute right-0 top-2 text-slate-400 hover:text-[#1155FA] transition-colors focus:outline-none"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute right-0 top-2 text-slate-400 dark:text-slate-500 hover:text-[#1155FA] dark:hover:text-blue-400 transition-colors focus:outline-none"
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
               </div>
             </div>
 
-            {/* แจ้งเตือน Error */}
             {loginError && (
-              <p className="text-red-500 text-xs font-bold animate-pulse">
+              <p className="text-red-500 dark:text-red-400 text-xs font-bold animate-pulse">
                 {loginError}
               </p>
             )}
 
-            {/* Terms & Button */}
             <div className="pt-4 flex flex-col sm:flex-row items-center gap-6">
               <button
                 type="submit"
                 disabled={isAuthenticating}
-                className="w-full sm:w-auto bg-[#1155FA] hover:bg-[#0A3DCD] disabled:bg-blue-300 text-white rounded-full px-10 py-3.5 font-bold shadow-[0_8px_20px_rgba(17,85,250,0.3)] hover:shadow-[0_8px_25px_rgba(17,85,250,0.4)] transition-all flex items-center justify-center min-w-[160px] active:scale-95"
+                className="w-full sm:w-auto bg-[#1155FA] dark:bg-blue-600 hover:bg-[#0A3DCD] dark:hover:bg-blue-500 disabled:bg-blue-300 dark:disabled:bg-blue-900 text-white rounded-full px-10 py-3.5 font-bold shadow-[0_8px_20px_rgba(17,85,250,0.3)] hover:shadow-[0_8px_25px_rgba(17,85,250,0.4)] transition-all flex items-center justify-center min-w-[160px] active:scale-95"
               >
                 {isAuthenticating ? <Loader2 className="animate-spin" size={20} /> : 'Login'}
               </button>
               
-              <button type="button" className="w-full sm:w-auto text-slate-400 hover:text-slate-600 font-bold px-6 py-3.5 rounded-full border-2 border-transparent hover:border-slate-200 transition-all focus:outline-none">
+              <button 
+                type="button" 
+                className="w-full sm:w-auto text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 font-bold px-6 py-3.5 rounded-full border-2 border-transparent hover:border-slate-200 dark:hover:border-slate-800 transition-all focus:outline-none"
+              >
                 Cancel
               </button>
             </div>
 
+            {/* 🌟 ส่วนที่เพิ่มใหม่: Register Link */}
+            <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800/50 text-center md:text-left animate-in fade-in slide-in-from-bottom-2 duration-700 delay-300">
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.15em] flex flex-wrap items-center justify-center md:justify-start gap-2">
+                Don't have an account? 
+                <Link 
+                  href="/register" 
+                  className="inline-flex items-center gap-1.5 text-[#1155FA] hover:text-[#0A3DCD] dark:text-blue-400 dark:hover:text-blue-300 transition-all font-black decoration-2 underline-offset-4 hover:underline group"
+                >
+                  <UserPlus size={14} className="group-hover:scale-110 transition-transform" />
+                  Create Account
+                </Link>
+              </p>
+            </div>
+
           </form>
         </div>
-
       </div>
     </div>
   );
