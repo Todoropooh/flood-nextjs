@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ShieldAlert, Bell, MessageSquare, Mail, Save, Plus, Trash2, ArrowLeft } from 'lucide-react';
+import { ShieldAlert, Bell, MessageSquare, Mail, Save, Plus, Trash2, ArrowLeft, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AlertsPage() {

@@ -6,8 +6,9 @@ import {
   LineChart, Line, Legend, AreaChart, Area 
 } from 'recharts';
 import { 
-  TrendingUp, ArrowLeft, activity, Calendar, 
-  Layers, BarChart3, PieChart, Filter, Zap
+  TrendingUp, ArrowLeft, Activity, Calendar, 
+  Layers, BarChart3, PieChart, Filter, Zap,
+  ShieldAlert, CheckCircle2 // 🌟 เพิ่ม 2 ตัวนี้ และเปลี่ยน Activity เป็นตัวใหญ่
 } from 'lucide-react';
 import Link from 'next/link';
 
