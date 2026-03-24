@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider"; 
-import AuthProvider from "@/components/AuthProvider"; // 🌟 1. นำเข้า AuthProvider
+import AuthProvider from "@/components/AuthProvider"; 
+import Navbar from "@/components/Navbar"; // 🌟 1. นำเข้า Navbar มาบ้านใหม่ที่นี่
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,19 +27,20 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {/* 🌟 2. ห่อระบบทั้งหมดด้วย AuthProvider เพื่อให้ทุกหน้าใช้ useSession ได้ */}
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <AuthProvider>
-          {/* ห่อด้วย ThemeProvider เพื่อให้เรียกใช้ useTheme() ในหน้า Page ได้ */}
           <ThemeProvider 
             attribute="class" 
             defaultTheme="system" 
             enableSystem
             disableTransitionOnChange
           >
+            {/* 🌟 2. วาง Navbar ไว้ที่นี่ เพื่อให้โผล่ทุกหน้าและใช้ Theme/Auth ได้ */}
+            <Navbar /> 
+
+            {/* ส่วนของเนื้อหาแต่ละหน้า */}
             {children}
+            
           </ThemeProvider>
         </AuthProvider>
       </body>
