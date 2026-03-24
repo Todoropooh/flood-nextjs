@@ -4,107 +4,95 @@ import WaterLog from "@/db/models/WaterLog";
 import Device from "@/db/models/Device";
 
 export const dynamic = 'force-dynamic';
-const lastAlertTime = new Map<string, number>();
-const ALERT_COOLDOWN = 1 * 60 * 1000; // ⏱️ ตั้งค่าหน่วงเวลาเตือน LINE (1 นาที)
 
-async function sendLineMessage(message: string) {
-  const ACCESS_TOKEN = "JSP4AFcQD0fSIwxGBIQXT+W2h/sD3wcdPUaLPu5I4znODmfu9l1qLVMgP328d/CZbBD8vRxfgv0LMwtc5Hn3MnQEovNDRLejZJ/VstvpNgfi98Kv/RXYQUQMbgg4TEbDeii03sBTNE4L9hkwS7tV/wdB04t89/1O/w1cDnyilFU="; 
-  const USER_ID = "Ub9d815d4781936f90560a1c8f243d859"; 
+// ⏱️ Cooldown: ป้องกันบอทส่งรัวเกินไป (1 นาที ต่อ 1 อุปกรณ์)
+const lastAlertTime = new Map<string, number>();
+const ALERT_COOLDOWN = 1 * 60 * 1000; 
+
+/**
+ * 🛰️ ฟังก์ชันส่งข้อความเข้า Telegram
+ */
+async function sendTelegramMessage(message: string) {
+  const BOT_TOKEN = "8130732948:AAFNf-e3dWlPXvdccuE-C9hx2LZ_DLtGUMQ"; 
+  const CHAT_ID = "8044413286"; 
+
   try {
-    const response = await fetch('https://api.line.me/v2/bot/message/push', {
+    const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ACCESS_TOKEN}` },
-      body: JSON.stringify({ to: USER_ID, messages: [{ type: "text", text: message }] }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: CHAT_ID,
+        text: message,
+        parse_mode: "HTML"
+      }),
     });
-    return await response.text();
-  } catch (error: any) { return error.message; }
+
+    const result = await response.json();
+    if (!result.ok) {
+      console.error("❌ Telegram ERROR:", result.description);
+      return `Error: ${result.description}`;
+    }
+    return "Success";
+  } catch (error: any) {
+    return error.message;
+  }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const payload = await request.json(); 
-    await connectDB();
+    const { mac, level, temperature, humidity, air_humidity, signal } = payload;
+    
+    if (!mac) return NextResponse.json({ error: "MAC Required" }, { status: 400 });
 
-    // 🌟 1. ดึงข้อมูลอุปกรณ์จาก Database "ก่อน" เพื่อเอาค่า 13.5, 2.8, 3.0
-    const device = await Device.findOne({ mac: payload.mac });
+    await connectDB();
+    const device = await Device.findOne({ mac });
     if (!device) return NextResponse.json({ error: "Device not found" }, { status: 404 });
 
-    // ดึงค่า Config (ถ้าไม่เจอให้ใช้ค่า Default สำหรับระยะ 13.5)
+    // 🌊 Logic คำนวณระดับน้ำ
     const h = device.installHeight ?? 13.5;
     const warnLimit = device.warningThreshold ?? 2.8;
     const critLimit = device.criticalThreshold ?? 3.0;
 
-    const currentDist = Number(payload.level ?? h); // เปลี่ยนชื่อตัวแปรเป็น Dist เพื่อความไม่งง
-    const currentTemp = Number(payload.temperature ?? 0);
-    const currentHumid = Number(payload.air_humidity ?? payload.humidity ?? 0);
-    const currentSignal = Number(payload.signal ?? 0);
-
-    // 🌟 2. คำนวณระดับน้ำแม่นยำสูง (หลักการเดียวกับหน้า Dashboard เป๊ะ!)
-    let wl = (h - currentDist);
-    if (currentDist >= (h - 0.1)) wl = 0; // Noise Filter ถ้าน้ำแห้ง
+    const currentDist = Number(level ?? h);
+    let wl = h - currentDist;
+    if (currentDist >= (h - 0.1)) wl = 0;
     if (wl > h) wl = h;
     if (wl < 0) wl = 0;
 
-    // 🌟 3. ตรวจสอบสถานะว่าต้องแจ้งเตือนไหม (บวกค่าเผื่อ Tolerance 0.05 เข้าไป)
-    const tolerance = 0.05;
+    // 🚦 ตรวจสอบสถานะ
     let currentStatus = "STABLE";
     let alertStatus = "";
-    
-    if (wl >= (critLimit - tolerance)) {
+    if (wl >= (critLimit - 0.05)) {
       currentStatus = "CRITICAL";
       alertStatus = "🚨 [อันตราย] ระดับน้ำวิกฤต!";
-    } else if (wl >= (warnLimit - tolerance)) {
+    } else if (wl >= (warnLimit - 0.05)) {
       currentStatus = "WARNING";
-      alertStatus = "⚠️ [เฝ้าระวัง] ระดับน้ำสูงกว่าเกณฑ์!";
+      alertStatus = "⚠️ [เฝ้าระวัง] ระดับน้ำสูง!";
     }
 
-    // 4. อัปเดตข้อมูล Device ในฐานข้อมูล
-    await Device.findOneAndUpdate(
-      { mac: payload.mac },
-      { 
-        waterLevel: currentDist, // เซฟระยะที่อ่านได้จริง
-        temperature: currentTemp, 
-        humidity: currentHumid,
-        status: currentStatus,   // 🌟 เซฟสถานะล่าสุด (สีแดง/ส้ม/เขียว) เข้าไปเลย
-        lastPing: new Date() 
-      },
-      { new: true } 
-    );
-
-    // 5. บันทึกข้อมูลประวัติ (WaterLog)
-    await WaterLog.create({
-      mac: payload.mac,
-      level: currentDist,        // เซฟระยะที่อ่านได้จริง
-      temperature: currentTemp,
-      air_humidity: currentHumid,
-      signal: currentSignal,
-      status: currentStatus      // 🌟 เซฟสถานะลง Log ด้วย
+    // 📝 บันทึกข้อมูล
+    await Device.findOneAndUpdate({ mac }, { 
+      waterLevel: currentDist, temperature, humidity: air_humidity ?? humidity, status: currentStatus, lastPing: new Date() 
     });
+    await WaterLog.create({ mac, level: currentDist, temperature, air_humidity: air_humidity ?? humidity, signal, status: currentStatus });
 
-    // 6. 🔔 ระบบแจ้งเตือน LINE
-    let lineStatus = "Normal";
+    // 🔔 ส่ง Telegram แจ้งเตือน
+    let telStatus = "Normal";
     if (device.isActive && alertStatus !== "") {
       const now = Date.now();
-      const lastAlert = lastAlertTime.get(payload.mac) || 0;
-      
+      const lastAlert = lastAlertTime.get(mac) || 0;
       if (now - lastAlert > ALERT_COOLDOWN) {
-        // ปรับแต่งข้อความ LINE ให้ละเอียดขึ้น มีบอกจุดวิกฤตด้วย
-        const alertMsg = `${alertStatus}\n📍 จุดติดตั้ง: ${device.name}\n🌊 ระดับน้ำ: ${wl.toFixed(2)} cm\n📏 เกณฑ์อันตราย: ${critLimit.toFixed(1)} cm\n🌡️ ${currentTemp.toFixed(1)}°C | 💧 ${currentHumid.toFixed(1)}%`;
-        
-        await sendLineMessage(alertMsg);
-        lastAlertTime.set(payload.mac, now);
-        lineStatus = "Sent Alert";
+        const msg = `<b>${alertStatus}</b>\n\n📍 สถานี: <b>${device.name}</b>\n🌊 ระดับน้ำ: <code>${wl.toFixed(2)} cm</code>\n🌡️ อุณหภูมิ: ${Number(temperature).toFixed(1)}°C\n📡 สัญญาณ: ${signal}%`;
+        await sendTelegramMessage(msg);
+        lastAlertTime.set(mac, now);
+        telStatus = "Sent Telegram";
       }
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      waterLevel: wl.toFixed(2), 
-      status: currentStatus, 
-      line_status: lineStatus 
-    });
-  } catch (error: any) { 
-    return NextResponse.json({ error: error.message }, { status: 500 }); 
+    return NextResponse.json({ success: true, waterLevel: wl.toFixed(2), status: currentStatus, telegram: telStatus });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
@@ -117,6 +105,7 @@ export async function GET(request: NextRequest) {
     if (timeframe === 'day') startDate.setHours(startDate.getHours() - 24);
     else if (timeframe === 'week') startDate.setDate(startDate.getDate() - 7);
     else if (timeframe === 'month') startDate.setMonth(startDate.getMonth() - 1);
+    else if (timeframe === 'year') startDate.setFullYear(startDate.getFullYear() - 1);
 
     const logs = await WaterLog.find({ createdAt: { $gte: startDate } }).sort({ createdAt: 1 });
     return NextResponse.json(logs);
