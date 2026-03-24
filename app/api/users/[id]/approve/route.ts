@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-// ✅ ถอย 4 ชั้นเพื่อไปหา db ที่อยู่นอกสุด
-import connectMongoDB from "../../../../db/mongodb"; 
-import User from "../../../../db/models/User";
+// 🌟 ใช้ @/ เช่นกันครับ เพื่อความสม่ำเสมอ
+import connectMongoDB from "@/db/mongodb"; 
+import User from "@/db/models/User";
 
+// ✅ ฟังก์ชันสำหรับกด "อนุมัติ" (Status -> true)
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
   try {
     await connectMongoDB();
@@ -20,18 +21,22 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 
     return NextResponse.json({ message: "อนุมัติผู้ใช้งานสำเร็จ ✅" }, { status: 200 });
   } catch (error) {
-    console.error("Approve Error:", error);
+    console.error("Approve API Error:", error);
     return NextResponse.json({ error: "เกิดข้อผิดพลาดในการอนุมัติ" }, { status: 500 });
   }
 }
 
+// ❌ ฟังก์ชันสำหรับกด "ปฏิเสธ" (ลบ User ทิ้ง)
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   try {
     await connectMongoDB();
     const { id } = params;
+    
     await User.findByIdAndDelete(id);
-    return NextResponse.json({ message: "ปฏิเสธและลบข้อมูลสำเร็จ ❌" }, { status: 200 });
+    
+    return NextResponse.json({ message: "ปฏิเสธการสมัครสำเร็จ ❌" }, { status: 200 });
   } catch (error) {
-    return NextResponse.json({ error: "เกิดข้อผิดพลาด" }, { status: 500 });
+    console.error("Delete API Error:", error);
+    return NextResponse.json({ error: "เกิดข้อผิดพลาดในการลบข้อมูล" }, { status: 500 });
   }
 }
