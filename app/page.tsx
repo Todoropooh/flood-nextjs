@@ -2,9 +2,8 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useTheme } from 'next-themes';
-import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { signOut, useSession } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
 
 // 🌟 Import Components
 import LoginScreen from '@/components/LoginScreen'; 
@@ -13,11 +12,10 @@ import WaterTank from '@/components/WaterTank';
 import RecentLogs from '@/components/RecentLogs'; 
 
 import { 
-  Waves, Sun, Activity, ChevronDown, Settings, 
-  Radio, Server, CheckCircle2, ShieldAlert, AlertTriangle, TrendingUp, 
-  Database, Clock, Signal, ActivitySquare, Zap, Loader2, Download,
-  LogOut, Cloud, CloudRain, CloudLightning, Wind, MapPin,
-  ArrowUpRight, ArrowDownRight, Minus, Wifi, WifiOff
+  Activity, CheckCircle2, ShieldAlert, AlertTriangle, 
+  Database, Clock, Signal, Zap, Loader2, Download,
+  Cloud, CloudRain, CloudLightning, Sun, MapPin,
+  ArrowUpRight, ArrowDownRight, Minus, Wifi, WifiOff, Wind
 } from 'lucide-react';
 
 const DeviceMap = dynamic(() => import('@/components/DeviceMap'), { 
@@ -26,22 +24,17 @@ const DeviceMap = dynamic(() => import('@/components/DeviceMap'), {
 });
 
 export default function Home() {
-  const { data: session, status } = useSession(); 
+  const { status } = useSession(); 
 
   const [logs, setLogs] = useState<any[]>([]);
   const [devices, setDevices] = useState<any[]>([]);
-  const [selectedDeviceMac, setSelectedDeviceMac] = useState<string>('ALL');
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [selectedDeviceMac] = useState<string>('ALL'); // ปกติจะรับจาก Global State หรือใช้ ALL เป็นค่าเริ่มต้น
   const [isMounted, setIsMounted] = useState(false);
-  
-  // 🌟 Timeframe State (day, week, month)
   const [timeframe, setTimeframe] = useState('day');
-  const { setTheme, resolvedTheme } = useTheme();
+  const { resolvedTheme } = useTheme();
   const [weather, setWeather] = useState<any>(null);
 
   useEffect(() => { setIsMounted(true); }, []);
-
-  const handleLogout = () => signOut({ redirect: false }); 
 
   const fetchWeather = async () => {
     try {
@@ -90,11 +83,10 @@ export default function Home() {
     return selectedDeviceMac === 'ALL' ? logs : logs.filter(l => (l.mac || l.device_id) === selectedDeviceMac);
   }, [logs, selectedDeviceMac]);
 
-  // 🌟 ตรวจสอบว่า Device Offline หรือไม่มีข้อมูลหรือไม่ (ออฟไลน์ถ้าข้อมูลล่าสุดเกิน 15 นาที)
   const isOffline = useMemo(() => {
     if (activeLogs.length === 0) return true;
     const lastLogTime = new Date(activeLogs[activeLogs.length - 1].createdAt || activeLogs[activeLogs.length - 1].timestamp).getTime();
-    return (Date.now() - lastLogTime) > 15 * 60 * 1000; // 15 นาที
+    return (Date.now() - lastLogTime) > 15 * 60 * 1000; 
   }, [activeLogs]);
 
   const waterInTank = useMemo(() => {
@@ -112,10 +104,8 @@ export default function Home() {
     return { warning: d?.warningThreshold ?? 2.8, critical: d?.criticalThreshold ?? 3.0, installHeight: d?.installHeight ?? 13.5 };
   }, [selectedDeviceMac, devices, activeLogs]);
 
-  // 🌟 ปรับ System Status ให้รองรับสถานะ NO DATA / OFFLINE
   const systemStatus = useMemo(() => {
     if (activeLogs.length === 0) return { label: "NO DATA", state: "offline", color: "text-slate-400", bg: "bg-slate-200 dark:bg-slate-800", icon: <WifiOff size={32} className="text-slate-500"/>, border: "border-slate-300 dark:border-slate-700" };
-    
     const tolerance = 0.05; 
     if (waterInTank >= (activeThresholds.critical - tolerance)) return { label: "DANGER", state: "danger", color: "text-red-600 dark:text-red-500", bg: "bg-red-500", icon: <ShieldAlert size={32} className="text-white"/>, border: "border-red-500" };
     if (waterInTank >= (activeThresholds.warning - tolerance)) return { label: "WARNING", state: "warning", color: "text-orange-600 dark:text-orange-500", bg: "bg-orange-500", icon: <AlertTriangle size={32} className="text-white"/>, border: "border-orange-500" };
@@ -129,14 +119,10 @@ export default function Home() {
       const h = activeThresholds.installHeight;
       const crit = activeThresholds.critical;
       const currentWater = calculateWater(latestLog.level, h);
-
-      // หาค่าสูงสุด
       const maxWater = Math.max(...activeLogs.map(l => calculateWater(l.level, h)));
-
       const latestTime = new Date(latestLog?.createdAt || Date.now()).getTime();
       const thirtyMinsAgo = latestTime - (30 * 60000);
       const oldLog = activeLogs.find(l => new Date(l.createdAt).getTime() >= thirtyMinsAgo) || activeLogs[0];
-      
       const hourDiff = (latestTime - new Date(oldLog.createdAt).getTime()) / 3600000;
       const rate = hourDiff > 0 ? (currentWater - calculateWater(oldLog.level, h)) / hourDiff : 0;
 
@@ -159,11 +145,9 @@ export default function Home() {
     } catch (e) { return { maxWater: 0, avgSignal: 0, rateOfChange: 0, timeToFlood: null, lastUpdate: 'Error', percentToCritical: 0 }; }
   }, [activeLogs, calculateWater, activeThresholds]);
 
-  // 🌟 UX: แปลงค่า Signal เป็นคำที่เข้าใจง่าย และแสดง OFFLINE ถ้าขาดการติดต่อ
   const signalStatus = useMemo(() => {
     if (activeLogs.length === 0) return { label: "No Data", icon: <WifiOff size={16}/>, color: "text-slate-400" };
     if (isOffline) return { label: "Offline", icon: <WifiOff size={16}/>, color: "text-red-500" };
-    
     const s = insights.avgSignal;
     if (s >= 20) return { label: "Good", icon: <Wifi size={16}/>, color: "text-emerald-500" };
     if (s >= 10) return { label: "Fair", icon: <Wifi size={16}/>, color: "text-orange-500" };
@@ -173,7 +157,7 @@ export default function Home() {
   const mapDevices = useMemo(() => {
     return devices.filter(d => selectedDeviceMac === 'ALL' || d.mac === selectedDeviceMac).map(d => {
       const dLogs = logs.filter(l => (l.mac || l.device_id) === d.mac);
-      if(dLogs.length === 0) return { ...d, currentLevel: 0, status: 'offline' }; // 🌟 เพิ่มสถานะ offline ใน map
+      if(dLogs.length === 0) return { ...d, currentLevel: 0, status: 'offline' };
       const last = dLogs[dLogs.length - 1];
       const lvl = calculateWater(last.level, d.installHeight ?? 13.5);
       let stat = 'safe';
@@ -196,59 +180,13 @@ export default function Home() {
   if (!isMounted || status === 'loading') return <div className="flex h-screen items-center justify-center bg-[#F8FAFC] dark:bg-[#0B1121]"><Loader2 className="animate-spin text-[#1155FA]" size={40} /></div>;
   if (status === 'unauthenticated') return <LoginScreen />;
 
-  const userRole = (session?.user as any)?.role || 'user';
   const isDark = resolvedTheme === 'dark';
   const weatherDetails = weather ? getWeatherIcon(weather.weathercode) : null;
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B1121] font-sans pb-10 transition-colors duration-300">
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B1121] font-sans pb-24 md:pb-10 transition-colors duration-300">
       
-      <header className="sticky top-0 z-[100] bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-3 shadow-sm print:hidden">
-        <div className="max-w-[1600px] mx-auto flex justify-between items-center">
-          
-          <div className="flex items-center gap-3 md:gap-4">
-            <div className="p-2 bg-[#1155FA] rounded-lg text-white shadow-sm flex-shrink-0">
-              <Waves size={18}/>
-            </div>
-            <div className="hidden sm:block leading-none">
-              <h1 className="font-black text-base text-slate-800 dark:text-white tracking-tight">Flood Monitor</h1>
-            </div>
-
-            <div className="relative ml-1 sm:ml-4">
-              <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors">
-                <Server size={14} className="text-[#1155FA] hidden sm:block" />
-                <span className="truncate max-w-[120px]">{selectedDeviceMac === 'ALL' ? 'All Devices' : devices.find(d => d.mac === selectedDeviceMac)?.name || 'Device'}</span>
-                <ChevronDown size={14} className={isDropdownOpen ? 'rotate-180' : ''} />
-              </button>
-              {isDropdownOpen && (
-                <div className="absolute top-full left-0 mt-2 w-56 bg-white dark:bg-slate-900 shadow-xl rounded-xl border border-slate-200 dark:border-slate-800 p-2 z-[110]">
-                  <button onClick={() => { setSelectedDeviceMac('ALL'); setIsDropdownOpen(false); }} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-bold uppercase hover:bg-blue-50 dark:hover:bg-slate-800 text-slate-700 dark:text-white transition-colors">🌍 All Devices</button>
-                  {devices.map((d: any) => (
-                    <button key={d.mac} onClick={() => { setSelectedDeviceMac(d.mac); setIsDropdownOpen(false); }} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-bold uppercase text-left mt-1 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors">
-                      <Radio size={14} className="text-slate-400 flex-shrink-0" /> <span className="truncate">{d.name}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-             <button onClick={() => setTheme(isDark ? 'light' : 'dark')} className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors">
-               <Sun size={16}/>
-             </button>
-             {userRole === 'admin' && (
-               <Link href="/admin" className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-500 hover:text-[#1155FA] transition-colors">
-                 <Settings size={16} />
-               </Link>
-             )}
-             <button onClick={handleLogout} className="p-2 rounded-lg border border-red-100 dark:border-red-900/30 bg-red-50 dark:bg-red-900/10 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors">
-               <LogOut size={16} />
-             </button>
-          </div>
-
-        </div>
-      </header>
+      {/* 🌟 ส่วน Header ถูกลบออกแล้ว เพราะใช้จาก Navbar กลาง */}
 
       <main className="max-w-[1600px] mx-auto p-4 sm:p-6 space-y-6">
         
@@ -353,8 +291,6 @@ export default function Home() {
           <div className={`xl:col-span-8 p-6 sm:p-8 rounded-3xl border shadow-sm min-h-[450px] transition-colors ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
              <div className="flex justify-between items-center mb-6">
                <h3 className="font-bold text-sm uppercase tracking-widest text-slate-500">Water Level History</h3>
-               
-               {/* 🌟 UX: Timeframe Selector (ปุ่มเลือกเวลา 24H, 7D, 30D) */}
                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
                  {['day', 'week', 'month'].map(t => (
                    <button 
@@ -373,7 +309,6 @@ export default function Home() {
                   <div className="w-full h-full flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
                      <Signal size={32} className="text-slate-300 dark:text-slate-700 mb-3" />
                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No Data Available</p>
-                     <p className="text-[10px] text-slate-400 mt-1">Try selecting a different time range</p>
                   </div>
                 ) : (
                   <WaterLevelChart data={activeLogs} isDark={isDark} devices={devices} timeframe={timeframe} selectedDeviceMac={selectedDeviceMac} />
