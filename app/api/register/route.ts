@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     if (userExists) return NextResponse.json({ error: "ชื่อผู้ใช้นี้มีคนใช้แล้ว" }, { status: 400 });
     const hashedPassword = await bcrypt.hash(password, 10);
     await User.create({ username, password: hashedPassword, firstname, lastname, phone, role: 'user', isApproved: false });
-    return NextResponse.json({ message: "สมัครสมาชิกสำเร็จ! กรุณารอ Admin อนุมัติ" }, { status: 201 });
+    return NextResponse.json({ message: "สมัครสำเร็จ! รอ Admin อนุมัติ" }, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

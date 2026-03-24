@@ -1,25 +1,27 @@
-import { NextResponse } from "next/server";
-import connectDB from "@/db/connect"; 
-import User from "@/db/models/User";
+import { NextResponse } from 'next/server';
 
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
-  try {
-    await connectDB();
-    const { id } = params;
-    const updatedUser = await User.findByIdAndUpdate(id, { isApproved: true }, { new: true });
-    if (!updatedUser) return NextResponse.json({ error: "ไม่พบผู้ใช้" }, { status: 404 });
-    return NextResponse.json({ message: "อนุมัติสำเร็จ ✅" });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+// สร้างตัวแปรเก็บค่าสวิตช์ไว้ชั่วคราว (เริ่มต้นให้เปิดไว้ทั้งคู่)
+let settings = {
+  systemOn: true,
+  buzzerOn: true
+};
+
+// ฝั่งบอร์ด ESP32 จะเข้ามาเรียกใช้ (GET) เพื่อถามสถานะ
+export async function GET() {
+  return NextResponse.json(settings);
 }
 
-export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+// ฝั่งหน้าเว็บจะส่งค่ามา (POST) เมื่อพี่กดสวิตช์
+export async function POST(req: Request) {
   try {
-    await connectDB();
-    await User.findByIdAndDelete(params.id);
-    return NextResponse.json({ message: "ลบสำเร็จ ❌" });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const body = await req.json();
+    
+    // อัปเดตค่าตามที่หน้าเว็บส่งมา
+    if (body.systemOn !== undefined) settings.systemOn = body.systemOn;
+    if (body.buzzerOn !== undefined) settings.buzzerOn = body.buzzerOn;
+    
+    return NextResponse.json({ success: true, settings });
+  } catch (error) {
+    return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
   }
 }
