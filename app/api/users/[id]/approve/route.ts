@@ -1,13 +1,13 @@
-import { NextResponse } from "next/navigation";
-import connectMongoDB from "@/db/mongodb";
-import User from "@/db/models/User";
+import { NextResponse } from "next/server";
+// ✅ แก้ไข Path ตรงนี้ (ถอย 4 ชั้น)
+import connectMongoDB from "../../../../db/mongodb"; 
+import User from "../../../../db/models/User";
 
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
   try {
     await connectMongoDB();
     const { id } = params;
 
-    // อัปเดตให้เป็น Approved และตั้ง Role เป็น user (หรือตามต้องการ)
     const updatedUser = await User.findByIdAndUpdate(
       id,
       { isApproved: true },
@@ -24,11 +24,11 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   }
 }
 
-// แถม: ฟังก์ชันปฏิเสธ (ลบทิ้ง)
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   try {
     await connectMongoDB();
-    await User.findByIdAndDelete(params.id);
+    const { id } = params;
+    await User.findByIdAndDelete(id);
     return NextResponse.json({ message: "ปฏิเสธและลบข้อมูลสำเร็จ ❌" }, { status: 200 });
   } catch (error) {
     return NextResponse.json({ error: "เกิดข้อผิดพลาด" }, { status: 500 });
