@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-// 🌟 ใช้ @/ ตาม tsconfig.json ของพี่ ชัวร์ที่สุดครับ
-import connectMongoDB from "@/db/mongodb"; 
-import User from "@/db/models/User";
+// ✅ ถอย 3 ชั้นเพื่อไปหาโฟลเดอร์ db ที่อยู่นอกสุด
+import connectMongoDB from "../../../db/mongodb"; 
+import User from "../../../db/models/User";
 import bcrypt from "bcryptjs"; 
 
 export async function POST(req: Request) {

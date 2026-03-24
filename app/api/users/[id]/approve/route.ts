@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-// 🌟 ใช้ @/ เช่นกันครับ เพื่อความสม่ำเสมอ
-import connectMongoDB from "@/db/mongodb"; 
-import User from "@/db/models/User";
+// ✅ ถอย 4 ชั้นเพื่อไปหาโฟลเดอร์ db ที่อยู่นอกสุด
+import connectMongoDB from "../../../../db/mongodb"; 
+import User from "../../../../db/models/User";
 
-// ✅ ฟังก์ชันสำหรับกด "อนุมัติ" (Status -> true)
+// ✅ ฟังก์ชันสำหรับกด "อนุมัติ" (ปรับสถานะเป็น true)
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
   try {
     await connectMongoDB();
@@ -26,7 +26,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   }
 }
 
-// ❌ ฟังก์ชันสำหรับกด "ปฏิเสธ" (ลบ User ทิ้ง)
+// ❌ ฟังก์ชันสำหรับกด "ปฏิเสธ" (ลบข้อมูลผู้ใช้ออก)
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   try {
     await connectMongoDB();
