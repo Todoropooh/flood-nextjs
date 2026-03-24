@@ -133,13 +133,44 @@ export default function AdminPage() {
     if (res.ok) fetchData();
   };
 
+  /**
+   * แก้ไขฟังก์ชัน Approve 
+   * ใช้ PATCH เพื่ออัปเดตสถานะ และจัดการ Error 405
+   */
   const handleApproveUser = async (id: string, approve: boolean) => {
-    const msg = approve ? "ยืนยันการอนุมัติสมาชิก?" : "ยืนยันการปฏิเสธสมาชิก?";
+    const msg = approve ? "ยืนยันการอนุมัติสมาชิก?" : "ยืนยันการปฏิเสธสมาชิก (ลบข้อมูล)?";
     if(!confirm(msg)) return;
+    
     setIsSaving(true);
-    const res = await fetch(`/api/users/${id}/approve`, { method: approve ? 'PUT' : 'DELETE' });
-    if(res.ok) { fetchData(); alert(approve ? "อนุมัติสำเร็จ ✅" : "ปฏิเสธสำเร็จ ❌"); }
-    setIsSaving(false);
+    try {
+      if (approve) {
+        // กรณีอนุมัติ: ส่ง PATCH ไปที่ endpoint approve
+        const res = await fetch(`/api/users/${id}/approve`, { 
+          method: 'PATCH', // เปลี่ยนเป็น PATCH เพื่อให้ตรงกับมาตรฐานการอัปเดตข้อมูล
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (res.ok) {
+          alert("อนุมัติสำเร็จ ✅");
+          fetchData();
+        } else {
+          const err = await res.json();
+          alert(`ผิดพลาด: ${err.message || 'ไม่สามารถอนุมัติได้'}`);
+        }
+      } else {
+        // กรณีปฏิเสธ: ลบข้อมูลผู้ใช้ทิ้ง
+        const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          alert("ปฏิเสธและลบข้อมูลสำเร็จ ❌");
+          fetchData();
+        }
+      }
+    } catch (error) {
+      console.error(error);
+      alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleSaveSystemSettings = async () => {
@@ -240,16 +271,16 @@ export default function AdminPage() {
         
         {/* Actions Bar */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6 justify-between items-center bg-white dark:bg-slate-900 p-4 rounded-3xl border dark:border-slate-800 shadow-sm">
-           <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-950 border dark:border-slate-800 rounded-xl text-xs font-bold outline-none" />
-           </div>
-           <div className="flex gap-2 w-full sm:w-auto">
-              <button onClick={() => openModal('export')} className="p-2.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-xl border dark:border-slate-800"><FileText size={18} /></button>
-              {activeTab !== 'system' && (
-                <button onClick={() => openModal(activeTab === 'nodes' ? 'add' : 'user')} className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-2 shadow-lg shadow-blue-500/20"><Plus size={16}/> Add New</button>
-              )}
-           </div>
+            <div className="relative w-full sm:w-64">
+               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+               <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-950 border dark:border-slate-800 rounded-xl text-xs font-bold outline-none" />
+            </div>
+            <div className="flex gap-2 w-full sm:w-auto">
+               <button onClick={() => openModal('export')} className="p-2.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-xl border dark:border-slate-800"><FileText size={18} /></button>
+               {activeTab !== 'system' && (
+                 <button onClick={() => openModal(activeTab === 'nodes' ? 'add' : 'user')} className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-2 shadow-lg shadow-blue-500/20"><Plus size={16}/> Add New</button>
+               )}
+            </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-[2.5rem] shadow-xl overflow-hidden">
@@ -293,8 +324,20 @@ export default function AdminPage() {
                       <div key={u._id} className="p-5 bg-amber-50 dark:bg-amber-500/5 border border-amber-100 dark:border-amber-500/20 rounded-[2rem] flex items-center justify-between">
                         <div className="font-black text-sm">{u.firstname} {u.lastname} <span className="block text-[10px] font-normal text-slate-500">@{u.username}</span></div>
                         <div className="flex gap-2">
-                          <button onClick={() => handleApproveUser(u._id, true)} className="p-2 bg-emerald-500 text-white rounded-full"><CheckCircle2 size={18}/></button>
-                          <button onClick={() => handleApproveUser(u._id, false)} className="p-2 bg-red-500 text-white rounded-full"><XCircle size={18}/></button>
+                          <button 
+                            onClick={() => handleApproveUser(u._id, true)} 
+                            disabled={isSaving}
+                            className="p-2 bg-emerald-500 text-white rounded-full hover:scale-110 transition-transform disabled:opacity-50"
+                          >
+                            <CheckCircle2 size={18}/>
+                          </button>
+                          <button 
+                            onClick={() => handleApproveUser(u._id, false)} 
+                            disabled={isSaving}
+                            className="p-2 bg-red-500 text-white rounded-full hover:scale-110 transition-transform disabled:opacity-50"
+                          >
+                            <XCircle size={18}/>
+                          </button>
                         </div>
                       </div>
                     ))}
