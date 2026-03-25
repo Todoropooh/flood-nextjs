@@ -6,7 +6,6 @@ import dynamic from 'next/dynamic';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation'; 
 
-
 // 🌟 Import Components
 import WaterLevelChart from '@/components/WaterLevelChart';
 import WaterTank from '@/components/WaterTank'; 
@@ -52,19 +51,33 @@ export default function Home() {
     } catch (error) { console.error("Error fetching weather:", error); }
   };
 
+  // 🛡️ [แก้ไขแล้ว] ระบบดึงข้อมูลแบบมีเกราะป้องกัน หน้าเว็บจะไม่มีวันระเบิด!
   const fetchData = useCallback(async () => {
     if (status !== 'authenticated') return; 
     
     try {
       const t = Date.now();
-      // 🌟 ใส่ cache: 'no-store' และแก้เป็น /api/settings ให้ตรงกับ Backend ที่เราทำไว้
       const [logRes, devRes] = await Promise.all([
         fetch(`/api/flood?timeframe=${timeframe}&t=${t}`, { cache: 'no-store' }),
         fetch(`/api/settings?t=${t}`, { cache: 'no-store' }) 
       ]);
-      if (logRes.ok && devRes.ok) {
-        setLogs(await logRes.json() || []);
-        setDevices(await devRes.json() || []);
+      
+      if (logRes.ok) {
+        const logData = await logRes.json();
+        // 🌟 บังคับให้เป็น Array เสมอ ถ้าไม่ใช่ให้ใส่ Array ว่าง
+        setLogs(Array.isArray(logData) ? logData : []);
+      }
+      
+      if (devRes.ok) {
+        const devData = await devRes.json();
+        // 🌟 ป้องกันหน้าเว็บพัง: ถ้า API ส่งก้อน Object มา ให้หุ้มด้วย Array [] ซะ!
+        if (Array.isArray(devData)) {
+          setDevices(devData);
+        } else if (devData && typeof devData === 'object') {
+          setDevices([devData]);
+        } else {
+          setDevices([]);
+        }
       }
     } catch (err) { console.error("Fetch error:", err); }
   }, [timeframe, status]);
@@ -79,7 +92,6 @@ export default function Home() {
     }
   }, [fetchData, status]);
 
-  // 🌟 เลิกลบซ้ำ! คืนค่าระดับน้ำตรงๆ เพราะ API จัดการมาให้แล้ว
   const calculateWater = useCallback((level: any, installHeight: number = 13.5) => {
     const raw = Number(level);
     if (isNaN(raw) || raw <= 0) return 0;
@@ -101,14 +113,16 @@ export default function Home() {
   const waterInTank = useMemo(() => {
     if (activeLogs.length === 0) return 0;
     const lastEntry = activeLogs[activeLogs.length - 1];
-    const device = devices.find(d => d.mac === (lastEntry.mac || lastEntry.device_id));
+    const safeDevices = Array.isArray(devices) ? devices : [];
+    const device = safeDevices.find(d => d.mac === (lastEntry.mac || lastEntry.device_id));
     return calculateWater(lastEntry?.level, device?.installHeight ?? 13.5);
   }, [activeLogs, calculateWater, devices]);
 
   const activeThresholds = useMemo(() => {
-    let d = devices.find(d => d.mac === selectedDeviceMac);
+    const safeDevices = Array.isArray(devices) ? devices : [];
+    let d = safeDevices.find(d => d.mac === selectedDeviceMac);
     if (selectedDeviceMac === 'ALL' && activeLogs.length > 0) {
-      d = devices.find(dev => dev.mac === (activeLogs[activeLogs.length - 1].mac || activeLogs[activeLogs.length - 1].device_id));
+      d = safeDevices.find(dev => dev.mac === (activeLogs[activeLogs.length - 1].mac || activeLogs[activeLogs.length - 1].device_id));
     }
     return { warning: d?.warningThreshold ?? 2.8, critical: d?.criticalThreshold ?? 3.0, installHeight: d?.installHeight ?? 13.5 };
   }, [selectedDeviceMac, devices, activeLogs]);
@@ -164,7 +178,8 @@ export default function Home() {
   }, [insights.avgSignal, activeLogs.length, isOffline]);
 
   const mapDevices = useMemo(() => {
-    return devices.filter(d => selectedDeviceMac === 'ALL' || d.mac === selectedDeviceMac).map(d => {
+    const safeDevices = Array.isArray(devices) ? devices : [];
+    return safeDevices.filter(d => selectedDeviceMac === 'ALL' || d.mac === selectedDeviceMac).map(d => {
       const dLogs = logs.filter(l => (l.mac || l.device_id) === d.mac);
       if(dLogs.length === 0) return { ...d, currentLevel: 0, status: 'offline' };
       const last = dLogs[dLogs.length - 1];
