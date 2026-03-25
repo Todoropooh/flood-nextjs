@@ -6,6 +6,10 @@ import dynamic from 'next/dynamic';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation'; 
 
+// 🌟 บังคับไม่ให้ Next.js แอบจำค่าเก่า (Cache) เด็ดขาด
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // 🌟 Import Components
 import WaterLevelChart from '@/components/WaterLevelChart';
 import WaterTank from '@/components/WaterTank'; 
@@ -56,9 +60,10 @@ export default function Home() {
     
     try {
       const t = Date.now();
+      // 🌟 ใส่ cache: 'no-store' และแก้เป็น /api/settings ให้ตรงกับ Backend ที่เราทำไว้
       const [logRes, devRes] = await Promise.all([
-        fetch(`/api/flood?timeframe=${timeframe}&t=${t}`),
-        fetch(`/api/devices?t=${t}`)
+        fetch(`/api/flood?timeframe=${timeframe}&t=${t}`, { cache: 'no-store' }),
+        fetch(`/api/settings?t=${t}`, { cache: 'no-store' }) 
       ]);
       if (logRes.ok && devRes.ok) {
         setLogs(await logRes.json() || []);
@@ -77,14 +82,12 @@ export default function Home() {
     }
   }, [fetchData, status]);
 
+  // 🌟 เลิกลบซ้ำ! คืนค่าระดับน้ำตรงๆ เพราะ API จัดการมาให้แล้ว
   const calculateWater = useCallback((level: any, installHeight: number = 13.5) => {
     const raw = Number(level);
     if (isNaN(raw) || raw <= 0) return 0;
-    if (raw >= (installHeight - 0.1)) return 0;
-    let val = (installHeight - raw);
-    if (val > installHeight) val = installHeight;
-    if (val < 0) val = 0;
-    return val;
+    if (raw > installHeight) return installHeight;
+    return raw; 
   }, []);
 
   const activeLogs = useMemo(() => {
@@ -202,7 +205,6 @@ export default function Home() {
     return { icon: <Cloud size={32} className="text-slate-400" />, text: "Normal" };
   };
 
-  // 💡 โหลดดิ้งก็ใส่ภาพพื้นหลังให้ด้วย จะได้ไม่กระพริบดำๆ ขาวๆ
   if (!isMounted || status === 'loading') return (
     <div className="flex h-screen items-center justify-center relative overflow-hidden">
       <div className="fixed inset-0 -z-10 bg-[#0f172a]">
@@ -221,21 +223,18 @@ export default function Home() {
   return (
     <div className="min-h-screen font-sans pb-24 md:pb-10 relative overflow-hidden transition-colors duration-300">
       
-      {/* 🌌 Background แบบ Glassmorphism (ตัวเดียวกับ Login) */}
       <div className="fixed inset-0 -z-10 bg-[#0f172a]">
         <img 
           src="https://images.pexels.com/photos/1295138/pexels-photo-1295138.jpeg" 
           className="w-full h-full object-cover opacity-100"
           alt="background"
         />
-        {/* ให้ Dashboard โปร่งกว่า Login นิดนึงเพื่อให้อ่านกราฟง่าย */}
         <div className="absolute inset-0 bg-slate-100/50 dark:bg-black/70 backdrop-blur-[40px] transition-colors duration-500" />
       </div>
 
       <main className="max-w-[1600px] mx-auto p-4 sm:p-6 space-y-6 relative z-10">
         
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* 🌟 Glass Card: Live Water Level */}
           <div className={`lg:col-span-8 p-6 sm:p-8 rounded-[2.5rem] shadow-2xl flex flex-col justify-between relative overflow-hidden transition-all backdrop-blur-xl ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
             <div className="flex justify-between items-start relative z-10">
                <div>
@@ -278,7 +277,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* 🌟 Glass Card: Weather */}
           <div className={`lg:col-span-4 rounded-[2.5rem] p-6 sm:p-8 shadow-2xl flex flex-col justify-between transition-all backdrop-blur-xl ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
             {weather ? (
               <>
@@ -307,7 +305,6 @@ export default function Home() {
            <StatCard icon={<Clock />} label="Update" value={insights.lastUpdate} isDark={isDark} />
         </div>
 
-        {/* 🌟 Glass Card: Chart */}
         <div className={`p-6 rounded-[2.5rem] shadow-2xl backdrop-blur-xl transition-all ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
            <div className="flex justify-between items-center mb-6">
              <h3 className="font-bold text-sm uppercase tracking-widest text-slate-600 dark:text-slate-300 drop-shadow-sm">History</h3>
@@ -325,12 +322,10 @@ export default function Home() {
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-           {/* 🌟 Glass Container: Map */}
            <div className={`xl:col-span-7 h-[500px] rounded-[2.5rem] overflow-hidden shadow-2xl backdrop-blur-xl transition-all ${isDark ? 'border border-white/10' : 'border border-white/50'}`}>
               <DeviceMap devices={mapDevices} />
            </div>
 
-           {/* 🌟 Glass Card: Logs */}
            <div className={`xl:col-span-5 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col h-[500px] backdrop-blur-xl transition-all ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
               <div className={`p-5 border-b flex justify-between items-center backdrop-blur-md ${isDark ? 'border-white/10 bg-black/20' : 'border-slate-300/30 bg-white/40'}`}>
                  <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-white drop-shadow-sm">System Logs</h3>
