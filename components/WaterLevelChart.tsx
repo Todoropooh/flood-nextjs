@@ -25,36 +25,39 @@ export default function WaterLevelChart({ data, isDark, devices, timeframe, sele
     const timelineMap = new Map();
     const now = new Date();
 
-    // 🌟 1. จองพื้นที่เวลาล่วงหน้าตามช่วงเวลาที่เลือก (ถอยหลังไปให้สุดหน้าจอ)
-    if (timeframe === 'month') {
-      for (let i = 30; i >= 0; i--) {
-        const d = new Date(); d.setDate(now.getDate() - i);
-        const key = d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
-        timelineMap.set(key, { time: key, timestamp: d.getTime(), level: 0, temp: 0, humid: 0 });
-      }
-    } else if (timeframe === 'year') {
-      for (let i = 11; i >= 0; i--) {
-        const d = new Date(); d.setMonth(now.getMonth() - i);
-        const key = d.toLocaleDateString('th-TH', { month: 'long' });
-        timelineMap.set(key, { time: key, timestamp: d.getTime(), level: 0, temp: 0, humid: 0 });
-      }
-    } else if (timeframe === 'week') {
-      for (let i = 7; i >= 0; i--) {
-        const d = new Date(); d.setDate(now.getDate() - i);
-        const key = d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
-        timelineMap.set(key, { time: key, timestamp: d.getTime(), level: 0, temp: 0, humid: 0 });
-      }
+    // 🌟 1. สร้างแกนเวลาเปล่าถอยหลัง (ใช้ปี/เดือน/วัน เป็น Key เพื่อกันเรื่อง Timezone)
+    const iterations = timeframe === 'year' ? 12 : timeframe === 'month' ? 30 : timeframe === 'week' ? 7 : 0;
+    
+    for (let i = iterations; i >= 0; i--) {
+      const d = new Date();
+      if (timeframe === 'year') d.setMonth(now.getMonth() - i);
+      else d.setDate(now.getDate() - i);
+
+      // สร้าง Key ที่เป็นมาตรฐาน (ISO Date) เพื่อเอาไว้แมพข้อมูล
+      const dateKey = timeframe === 'year' 
+        ? d.toLocaleDateString('th-TH', { month: 'long' })
+        : d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
+
+      timelineMap.set(dateKey, { 
+        time: dateKey, 
+        timestamp: d.setHours(0,0,0,0), // ตั้งเป็นต้นวันเพื่อการ Sort
+        level: 0, temp: 0, humid: 0 
+      });
     }
 
-    // 🌟 2. นำข้อมูลจริงมาหยอดทับ (ถ้ามีจุดไหน ข้อมูลจะเปลี่ยนจาก 0 เป็นค่าจริง)
+    // 🌟 2. นำข้อมูลจริงมาหยอด
     if (data && data.length > 0) {
       data.forEach(log => {
         const date = new Date(log.createdAt || log.timestamp);
         let key = "";
         
-        if (timeframe === 'day') key = date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-        else if (timeframe === 'year') key = date.toLocaleDateString('th-TH', { month: 'long' });
-        else key = date.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
+        if (timeframe === 'day') {
+          key = date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+        } else if (timeframe === 'year') {
+          key = date.toLocaleDateString('th-TH', { month: 'long' });
+        } else {
+          key = date.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
+        }
 
         const val = {
           level: Number(log.level || 0),
@@ -63,10 +66,15 @@ export default function WaterLevelChart({ data, isDark, devices, timeframe, sele
         };
 
         if (timeframe === 'day') {
-          // รายวันเพิ่มจุดใหม่ตลอด
-          if (!timelineMap.has(key)) timelineMap.set(key, { time: key, timestamp: date.getTime(), ...val });
+          // รายวัน: ถ้าไม่มี Key นี้ให้สร้างใหม่ (เพราะ Day เราไม่ได้จอง Timeline ไว้ล่วงหน้า)
+          if (!timelineMap.has(key)) {
+            timelineMap.set(key, { time: key, timestamp: date.getTime(), ...val });
+          } else {
+            const entry = timelineMap.get(key);
+            entry.level = val.level; entry.temp = val.temp; entry.humid = val.humid;
+          }
         } else if (timelineMap.has(key)) {
-          // รายอื่นหยอดลงแกนเวลาที่จองไว้
+          // รายอื่น: หยอดลงช่องที่จองไว้
           const entry = timelineMap.get(key);
           if (selectedDeviceMac === 'ALL') {
             const device = devices.find(d => d.mac === log.mac);
@@ -79,14 +87,18 @@ export default function WaterLevelChart({ data, isDark, devices, timeframe, sele
       });
     }
 
-    return Array.from(timelineMap.values()).sort((a: any, b: any) => a.timestamp - b.timestamp);
+    const result = Array.from(timelineMap.values()).sort((a: any, b: any) => a.timestamp - b.timestamp);
+    console.log("Chart Data Debug:", result); // ดูใน Console ได้ว่าข้อมูลมาไหม
+    return result;
   }, [data, timeframe, devices, selectedDeviceMac, activeTab]);
 
   const maxValue = useMemo(() => {
-    let max = 10;
+    let max = 5; // ตั้งพื้นฐานไว้ 5
     chartData.forEach((d: any) => {
       Object.keys(d).forEach(k => {
-        if (k.includes(activeTab) && d[k] > max) max = d[k];
+        if (k.includes(activeTab) || k === 'level' || k === 'temp' || k === 'humid') {
+          if (typeof d[k] === 'number' && d[k] > max) max = d[k];
+        }
       });
     });
     return Math.ceil(max * 1.2);
@@ -118,7 +130,7 @@ export default function WaterLevelChart({ data, isDark, devices, timeframe, sele
             </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#334155' : '#e2e8f0'} />
             <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 9}} minTickGap={30} />
-            <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
+            <YAxis domain={[0, maxValue]} axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
             <Tooltip contentStyle={{ borderRadius: '15px', border: 'none', background: isDark ? '#1e293b' : '#fff', fontSize: '12px' }} />
             
             {selectedDeviceMac === 'ALL' ? (
