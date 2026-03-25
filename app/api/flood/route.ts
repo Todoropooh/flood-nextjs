@@ -5,126 +5,68 @@ import Device from "@/db/models/Device";
 
 export const dynamic = 'force-dynamic';
 
-const lastAlertTime = new Map<string, number>();
-const ALERT_COOLDOWN = 1 * 60 * 1000; 
-
-async function sendTelegramMessage(message: string) {
-  const BOT_TOKEN = "8130732948:AAFNf-e3dWlPXvdccuE-C9hx2LZ_DLtGUMQ"; 
-  const CHAT_ID = "8044413286"; 
-  try {
-    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: CHAT_ID, text: message, parse_mode: "HTML" }),
-    });
-    return "Success";
-  } catch (e) { return "Error"; }
-}
-
-/**
- * 📥 [GET] ดึงข้อมูลไปโชว์ที่ Dashboard
- */
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
     const { searchParams } = new URL(request.url);
-    const timeframe = searchParams.get('timeframe') || 'day';
     const mac = searchParams.get('mac');
+    const timeframe = searchParams.get('timeframe') || 'day';
 
     let startDate = new Date();
     if (timeframe === 'day') startDate.setHours(startDate.getHours() - 24);
     else if (timeframe === 'week') startDate.setDate(startDate.getDate() - 7);
-    else if (timeframe === 'month') startDate.setMonth(startDate.getMonth() - 1);
+    else startDate.setMonth(startDate.getMonth() - 1);
 
     let query: any = { createdAt: { $gte: startDate } };
-    if (mac) query.mac = mac;
+    if (mac && mac !== "null" && mac !== "undefined") query.mac = mac;
 
-    const logs = await WaterLog.find(query).sort({ createdAt: 1 });
-    return NextResponse.json(logs);
+    const logs = await WaterLog.find(query).sort({ createdAt: 1 }).limit(1000);
+    return NextResponse.json(logs || []); 
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json([]); 
   }
 }
 
-/**
- * 📤 [POST] รับข้อมูลจาก ESP32
- */
 export async function POST(request: NextRequest) {
   try {
     const payload = await request.json(); 
-    const { mac, level, temperature, humidity, air_humidity, signal } = payload;
-    
+    const { mac, level, signal, temperature, air_humidity } = payload;
     if (!mac) return NextResponse.json({ error: "MAC Required" }, { status: 400 });
 
     await connectDB();
     const device = await Device.findOne({ mac });
     if (!device) return NextResponse.json({ error: "Device not found" }, { status: 404 });
 
-    // 📏 ใช้ระยะติดตั้งจากฐานข้อมูล (ที่พี่ตั้งไว้ 30 cm ในหน้า Admin)
-    const h = Number(device.installHeight) || 30.0;
-    const warnLimit = Number(device.warningThreshold) || 2.0;
-    const critLimit = Number(device.criticalThreshold) || 5.0;
-
-    // 📡 ระยะที่เซนเซอร์วัดได้ (Distance)
+    // 📏 คำนวณระดับน้ำจากพื้น (Logic ที่พี่ต้องการ)
+    const h = Number(device.installHeight) || 12.6; 
     const currentDist = Number(level) || h;
-    const currentTemp = Number(temperature) || 0;
-    const currentHumid = Number(air_humidity ?? humidity) || 0;
-    const currentSignal = Number(signal) || 0;
-
-    // 🌊 คำนวณระดับน้ำจากพื้น (Water Level)
-    // สูตร: ระยะติดตั้ง - ระยะที่วัดได้
-    let wl = h - currentDist;
-    
-    // ดัก Error: ถ้าระยะวัดได้มากกว่าระยะติดตั้ง หรือห่างกันไม่เกิน 0.2 cm ให้เป็นน้ำแห้ง (0)
-    if (currentDist >= (h - 0.2)) wl = 0;
+    let wl = h - currentDist; 
+    if (currentDist >= (h - 0.2)) wl = 0; // ถ้าน้ำแห้งหรือเซนเซอร์ยิงถึงพื้น
     if (wl < 0) wl = 0;
     if (wl > h) wl = h;
 
-    // 🚦 ตรวจสอบสถานะ (เทียบกับเกณฑ์ระดับน้ำจากพื้น)
-    let currentStatus = "STABLE";
-    let alertStatus = "";
-    if (wl >= (critLimit - 0.05)) {
-      currentStatus = "CRITICAL";
-      alertStatus = "🚨 [อันตราย] ระดับน้ำวิกฤต!";
-    } else if (wl >= (warnLimit - 0.05)) {
-      currentStatus = "WARNING";
-      alertStatus = "⚠️ [เฝ้าระวัง] ระดับน้ำสูง!";
-    }
+    // 🚦 สถานะ
+    const status = wl >= (device.criticalThreshold || 5) ? "CRITICAL" : 
+                   (wl >= (device.warningThreshold || 2) ? "WARNING" : "STABLE");
 
-    // 📝 อัปเดต Device: บันทึก wl (ระดับน้ำจริง) เพื่อโชว์หน้าเว็บ
+    // 📝 อัปเดต Device และบันทึก Log
     await Device.findOneAndUpdate({ mac }, { 
       waterLevel: wl, 
-      temperature: currentTemp, 
-      humidity: currentHumid, 
-      status: currentStatus, 
-      lastPing: new Date() 
+      lastPing: new Date(),
+      status: status
     });
 
-    // 📝 บันทึก WaterLog: บันทึก wl (ระดับน้ำจริง) ลงกราฟ
     await WaterLog.create({ 
       mac, 
-      level: wl,
-      temperature: currentTemp, 
-      air_humidity: currentHumid, 
-      signal: currentSignal, 
-      status: currentStatus 
+      level: wl, 
+      signal: signal || 0,
+      temperature: temperature || 0,
+      air_humidity: air_humidity || 0,
+      status: status 
     });
 
-    // 🔔 แจ้งเตือน Telegram
-    if (device.isActive && alertStatus !== "") {
-      const now = Date.now();
-      const lastAlert = lastAlertTime.get(mac) || 0;
-      if (now - lastAlert > ALERT_COOLDOWN) {
-        const msg = `<b>${alertStatus}</b>\n📍 สถานี: <b>${device.name}</b>\n🌊 ระดับน้ำ: <code>${wl.toFixed(2)} cm</code>\n📡 สัญญาณ: ${currentSignal}`;
-        await sendTelegramMessage(msg);
-        lastAlertTime.set(mac, now);
-      }
-    }
-
-    return NextResponse.json({ success: true, waterLevel: wl.toFixed(2), status: currentStatus });
-
+    return NextResponse.json({ success: true, waterLevel: wl.toFixed(2) });
   } catch (error: any) {
-    console.error("❌ CRITICAL API ERROR:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
