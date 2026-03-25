@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useTheme } from 'next-themes';
 import dynamic from 'next/dynamic';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation'; 
 import Link from 'next/link'; 
+import { toast, Toaster } from 'react-hot-toast'; // อย่าลืมลง npm install react-hot-toast
 
 // 🌟 Import ไลบรารีสำหรับทำ PDF
 import jsPDF from 'jspdf';
@@ -21,7 +22,7 @@ import {
   Database, Clock, Signal, Zap, Loader2, Download,
   Cloud, CloudRain, CloudLightning, Sun, MapPin,
   ArrowUpRight, ArrowDownRight, Minus, Wifi, WifiOff,
-  BarChart3, Thermometer, Droplets, Waves, Smartphone, FileText
+  BarChart3, Thermometer, Droplets, Waves, Smartphone, FileText, AlertOctagon
 } from 'lucide-react';
 
 const DeviceMap = dynamic(() => import('@/components/DeviceMap'), { 
@@ -40,10 +41,18 @@ export default function Home() {
   const [timeframe, setTimeframe] = useState('day');
   const { resolvedTheme } = useTheme();
   const [weather, setWeather] = useState<any>(null);
-  
   const [isExporting, setIsExporting] = useState(false);
 
-  useEffect(() => { setIsMounted(true); }, []);
+  // 🔔 Ref สำหรับเก็บเวลาแจ้งเตือนล่าสุดของแต่ละ Node (ป้องกันการเด้งซ้ำซ้อน)
+  const lastNotifiedRef = useRef<Record<string, number>>({});
+
+  useEffect(() => { 
+    setIsMounted(true); 
+    // ขออนุญาตแจ้งเตือนบนเบราว์เซอร์
+    if (typeof window !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -87,6 +96,38 @@ export default function Home() {
     } catch (err) { console.error("Fetch error:", err); }
   }, [timeframe, status]);
 
+  // 🔔 ฟังก์ชันแจ้งเตือน Noti
+  const triggerPushNotification = useCallback((name: string, level: number) => {
+    // 1. แจ้งเตือนแบบ Toast ภายในแอป (สีแดงวิกฤต)
+    toast.custom((t) => (
+      <div className={`${t.visible ? 'animate-in fade-in slide-in-from-top-4' : 'animate-out fade-out slide-out-to-top-2'} max-w-md w-full bg-red-600/90 backdrop-blur-xl shadow-2xl rounded-[1.5rem] pointer-events-auto flex border border-white/30 p-4 text-white`}>
+        <div className="flex-1 w-0 p-1">
+          <div className="flex items-start">
+            <div className="flex-shrink-0 pt-0.5">
+              <AlertOctagon className="h-10 w-10 text-white animate-pulse" />
+            </div>
+            <div className="ml-3 flex-1">
+              <p className="text-[10px] font-black uppercase tracking-widest opacity-70 text-white/80">Critical Alert Detected!</p>
+              <p className="text-sm font-black mt-1 uppercase tracking-tight">Station: {name}</p>
+              <p className="text-xs font-bold opacity-90">Current Level: {level.toFixed(2)} cm</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex border-l border-white/20">
+          <button onClick={() => toast.dismiss(t.id)} className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-[10px] font-black uppercase hover:bg-white/10 transition-all">Dismiss</button>
+        </div>
+      </div>
+    ), { duration: 8000 });
+
+    // 2. แจ้งเตือนแบบเบราว์เซอร์ Push (กรณีพับจอ)
+    if (Notification.permission === 'granted') {
+      new Notification(`🚨 ระดับน้ำวิกฤต: ${name}`, {
+        body: `ตรวจพบระดับน้ำ ${level.toFixed(2)} cm กรุณาตรวจสอบสถานการณ์ด่วน!`,
+        icon: '/favicon.ico'
+      });
+    }
+  }, []);
+
   useEffect(() => {
     if (status === 'authenticated') {
       fetchData(); 
@@ -96,6 +137,29 @@ export default function Home() {
       return () => { clearInterval(dataInterval); clearInterval(weatherInterval); };
     }
   }, [fetchData, status]);
+
+  // 🔔 Effect สำหรับเช็คการแจ้งเตือนจากข้อมูลที่โหลดมาใหม่
+  useEffect(() => {
+    if (!logs.length || !devices.length) return;
+    
+    devices.forEach(device => {
+      const deviceLogs = logs.filter(l => (l.mac || l.device_id) === device.mac);
+      if (deviceLogs.length === 0) return;
+
+      const latestLog = deviceLogs[deviceLogs.length - 1];
+      const waterLevel = Number(latestLog.level || 0);
+      const critThresh = device.criticalThreshold || 10;
+      
+      const now = Date.now();
+      const lastTime = lastNotifiedRef.current[device.mac] || 0;
+
+      // ถ้าเกินค่าวิกฤต และยังไม่ได้เตือนใน 5 นาทีที่ผ่านมา
+      if (waterLevel >= critThresh && (now - lastTime > 5 * 60000)) {
+        triggerPushNotification(device.name, waterLevel);
+        lastNotifiedRef.current[device.mac] = now;
+      }
+    });
+  }, [logs, devices, triggerPushNotification]);
 
   const calculateWater = useCallback((level: any) => {
     const raw = Number(level);
@@ -217,13 +281,10 @@ export default function Home() {
     });
   }, [devices, logs, selectedDeviceMac, calculateWater]);
 
-  // 🌟 นำตัวแปรพวกนี้ขึ้นมาก่อน Return เพื่อไม่ให้ขัด Rules of Hooks
   const isDark = resolvedTheme === 'dark';
-  
   const currentDeviceDetail = devices.find(d => d.mac === selectedDeviceMac);
   const displayTrend = currentDeviceDetail?.trend !== undefined ? currentDeviceDetail.trend : insights.rateOfChange;
 
-  // 🌟 ย้าย useMemo ขึ้นมาอยู่เหนือ Early Returns
   const trendBadge = useMemo(() => {
     if (activeLogs.length === 0) return { text: "⏳ รอข้อมูล...", bg: "bg-slate-500/10 border-slate-500 text-slate-500" };
     if (displayTrend > 2.0) return { text: "🚨 ระดับน้ำกำลังเพิ่มขึ้นอย่างรวดเร็ว!", bg: "bg-red-500/10 border-red-500 text-red-600 dark:text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.5)] animate-pulse" };
@@ -330,7 +391,6 @@ export default function Home() {
     return { icon: <Cloud size={32} className="text-slate-400" />, text: "Normal" };
   };
 
-  // 🔴 Early Returns ต้องอยู่บรรทัดท้ายสุด หลังจาก Hook ทั้งหมดจบลง
   if (!isMounted || status === 'loading') return (
     <div className="flex h-screen items-center justify-center relative overflow-hidden">
       <div className="fixed inset-0 -z-10 bg-[#0f172a]">
@@ -348,6 +408,9 @@ export default function Home() {
   return (
     <div className="min-h-screen font-sans pb-24 md:pb-10 relative overflow-hidden transition-colors duration-300">
       
+      {/* 🔔 Notification Component */}
+      <Toaster position="top-right" reverseOrder={false} />
+
       <div className="fixed inset-0 -z-10 bg-[#0f172a]">
         <img src="https://images.pexels.com/photos/1295138/pexels-photo-1295138.jpeg" className="w-full h-full object-cover opacity-100" alt="background" />
         <div className="absolute inset-0 bg-slate-100/50 dark:bg-black/70 backdrop-blur-[40px] transition-colors duration-500" />
