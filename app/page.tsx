@@ -5,7 +5,7 @@ import { useTheme } from 'next-themes';
 import dynamic from 'next/dynamic';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation'; 
-import Link from 'next/link'; // 🌟 เพิ่ม Link สำหรับไปหน้า Analytics
+import Link from 'next/link'; 
 
 // 🌟 Import Components
 import WaterLevelChart from '@/components/WaterLevelChart';
@@ -101,10 +101,9 @@ export default function Home() {
     return selectedDeviceMac === 'ALL' ? logs : logs.filter(l => (l.mac || l.device_id) === selectedDeviceMac);
   }, [logs, selectedDeviceMac]);
 
-  // 🌟 [เพิ่มใหม่] คำนวณค่าเฉลี่ยสำหรับ Quick Stats
   const avgStats = useMemo(() => {
     if (activeLogs.length === 0) return { level: 0, temp: 0, humid: 0 };
-    const validLogs = activeLogs.filter(l => Number(l.level) < 150); // กรองค่าเพี้ยน
+    const validLogs = activeLogs.filter(l => Number(l.level) < 150); 
     if (validLogs.length === 0) return { level: 0, temp: 0, humid: 0 };
 
     const sum = validLogs.reduce((acc, log) => ({
@@ -143,11 +142,18 @@ export default function Home() {
     return { warning: d?.warningThreshold ?? 2.8, critical: d?.criticalThreshold ?? 3.0, installHeight: d?.installHeight ?? 13.5 };
   }, [selectedDeviceMac, devices, activeLogs]);
 
+  // 🌟 [ปรับปรุง] ระบบเช็คสถานะแบบไม่มี Tolerance (เป๊ะตาม Settings)
   const systemStatus = useMemo(() => {
     if (activeLogs.length === 0) return { label: "NO DATA", state: "offline", color: "text-slate-400", bg: "bg-white/40 dark:bg-black/40 backdrop-blur-md", icon: <WifiOff size={32} className="text-slate-500"/>, border: "border-white/30 dark:border-white/10" };
-    const tolerance = 0.05; 
-    if (waterInTank >= (activeThresholds.critical - tolerance)) return { label: "DANGER", state: "danger", color: "text-red-600 dark:text-red-500", bg: "bg-red-500/80 backdrop-blur-md", icon: <ShieldAlert size={32} className="text-white"/>, border: "border-red-500/50" };
-    if (waterInTank >= (activeThresholds.warning - tolerance)) return { label: "WARNING", state: "warning", color: "text-orange-600 dark:text-orange-500", bg: "bg-orange-500/80 backdrop-blur-md", icon: <AlertTriangle size={32} className="text-white"/>, border: "border-orange-500/50" };
+    
+    // ตัดที่ค่าที่ตั้งไว้เป๊ะๆ ไม่มีการลบ 0.05
+    if (waterInTank >= activeThresholds.critical) {
+      return { label: "DANGER", state: "danger", color: "text-red-600 dark:text-red-500", bg: "bg-red-500/80 backdrop-blur-md", icon: <ShieldAlert size={32} className="text-white"/>, border: "border-red-500/50" };
+    }
+    if (waterInTank >= activeThresholds.warning) {
+      return { label: "WARNING", state: "warning", color: "text-orange-600 dark:text-orange-500", bg: "bg-orange-500/80 backdrop-blur-md", icon: <AlertTriangle size={32} className="text-white"/>, border: "border-orange-500/50" };
+    }
+    
     return { label: "STABLE", state: "safe", color: "text-emerald-600 dark:text-emerald-500", bg: "bg-emerald-500/80 backdrop-blur-md", icon: <CheckCircle2 size={32} className="text-white"/>, border: "border-emerald-500/50" };
   }, [waterInTank, activeThresholds, activeLogs.length]);
 
@@ -169,7 +175,7 @@ export default function Home() {
       if (rate > 0.05 && currentWater < crit) {
         const mins = Math.round(((crit - currentWater) / rate) * 60);
         timeStr = mins > 60 ? `Risk in ${Math.floor(mins/60)}h ${mins%60}m` : `Risk in ${mins}m`;
-      } else if (currentWater >= (crit - 0.05)) {
+      } else if (currentWater >= crit) {
         timeStr = "Critical Now";
       }
 
@@ -201,8 +207,8 @@ export default function Home() {
       const last = dLogs[dLogs.length - 1];
       const lvl = calculateWater(last.level);
       let stat = 'safe';
-      if(lvl >= (d.criticalThreshold ?? 3.0) - 0.05) stat = 'danger';
-      else if(lvl >= (d.warningThreshold ?? 2.8) - 0.05) stat = 'warning';
+      if(lvl >= (d.criticalThreshold ?? 3.0)) stat = 'danger';
+      else if(lvl >= (d.warningThreshold ?? 2.8)) stat = 'warning';
       return { ...d, currentLevel: lvl, status: stat };
     });
   }, [devices, logs, selectedDeviceMac, calculateWater]);
@@ -258,7 +264,7 @@ export default function Home() {
 
       <main className="max-w-[1600px] mx-auto p-4 sm:p-6 space-y-6 relative z-10">
         
-        {/* 🌟 Header & Current Status */}
+        {/* Header & Current Status */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className={`lg:col-span-8 p-6 sm:p-8 rounded-[2.5rem] shadow-2xl flex flex-col justify-between relative overflow-hidden transition-all backdrop-blur-xl ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
             <div className="flex justify-between items-start relative z-10">
