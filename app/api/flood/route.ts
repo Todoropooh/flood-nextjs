@@ -22,7 +22,7 @@ async function sendTelegramMessage(message: string) {
 }
 
 /**
- * 📥 [GET] สำหรับหน้าเว็บดึงข้อมูลไปโชว์ (แก้ 405 Method Not Allowed)
+ * 📥 [GET] ดึงข้อมูลไปโชว์ที่ Dashboard
  */
 export async function GET(request: NextRequest) {
   try {
@@ -36,12 +36,10 @@ export async function GET(request: NextRequest) {
     else if (timeframe === 'week') startDate.setDate(startDate.getDate() - 7);
     else if (timeframe === 'month') startDate.setMonth(startDate.getMonth() - 1);
 
-    // สร้าง Query ค้นหา
     let query: any = { createdAt: { $gte: startDate } };
     if (mac) query.mac = mac;
 
     const logs = await WaterLog.find(query).sort({ createdAt: 1 });
-    
     return NextResponse.json(logs);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -49,7 +47,7 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * 📤 [POST] สำหรับ ESP32 ส่งข้อมูลมาบันทึก
+ * 📤 [POST] รับข้อมูลจาก ESP32
  */
 export async function POST(request: NextRequest) {
   try {
@@ -62,20 +60,27 @@ export async function POST(request: NextRequest) {
     const device = await Device.findOne({ mac });
     if (!device) return NextResponse.json({ error: "Device not found" }, { status: 404 });
 
-    const h = Number(device.installHeight) || 13.5;
-    const warnLimit = Number(device.warningThreshold) || 2.8;
-    const critLimit = Number(device.criticalThreshold) || 3.0;
+    // 📏 ใช้ระยะติดตั้งจากฐานข้อมูล (ที่พี่ตั้งไว้ 30 cm ในหน้า Admin)
+    const h = Number(device.installHeight) || 30.0;
+    const warnLimit = Number(device.warningThreshold) || 2.0;
+    const critLimit = Number(device.criticalThreshold) || 5.0;
 
+    // 📡 ระยะที่เซนเซอร์วัดได้ (Distance)
     const currentDist = Number(level) || h;
     const currentTemp = Number(temperature) || 0;
     const currentHumid = Number(air_humidity ?? humidity) || 0;
     const currentSignal = Number(signal) || 0;
 
+    // 🌊 คำนวณระดับน้ำจากพื้น (Water Level)
+    // สูตร: ระยะติดตั้ง - ระยะที่วัดได้
     let wl = h - currentDist;
+    
+    // ดัก Error: ถ้าระยะวัดได้มากกว่าระยะติดตั้ง หรือห่างกันไม่เกิน 0.2 cm ให้เป็นน้ำแห้ง (0)
     if (currentDist >= (h - 0.2)) wl = 0;
     if (wl < 0) wl = 0;
     if (wl > h) wl = h;
 
+    // 🚦 ตรวจสอบสถานะ (เทียบกับเกณฑ์ระดับน้ำจากพื้น)
     let currentStatus = "STABLE";
     let alertStatus = "";
     if (wl >= (critLimit - 0.05)) {
@@ -86,14 +91,16 @@ export async function POST(request: NextRequest) {
       alertStatus = "⚠️ [เฝ้าระวัง] ระดับน้ำสูง!";
     }
 
+    // 📝 อัปเดต Device: บันทึก wl (ระดับน้ำจริง) เพื่อโชว์หน้าเว็บ
     await Device.findOneAndUpdate({ mac }, { 
-      waterLevel: wl,
+      waterLevel: wl, 
       temperature: currentTemp, 
       humidity: currentHumid, 
       status: currentStatus, 
       lastPing: new Date() 
     });
 
+    // 📝 บันทึก WaterLog: บันทึก wl (ระดับน้ำจริง) ลงกราฟ
     await WaterLog.create({ 
       mac, 
       level: wl,
@@ -103,6 +110,7 @@ export async function POST(request: NextRequest) {
       status: currentStatus 
     });
 
+    // 🔔 แจ้งเตือน Telegram
     if (device.isActive && alertStatus !== "") {
       const now = Date.now();
       const lastAlert = lastAlertTime.get(mac) || 0;
