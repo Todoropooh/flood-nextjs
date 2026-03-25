@@ -4,15 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Waves, Thermometer, Droplets } from 'lucide-react';
 
-interface WaterLevelChartProps {
-  data: any[];
-  isDark: boolean;
-  devices: any[];
-  timeframe: string;
-  selectedDeviceMac: string;
-}
-
-export default function WaterLevelChart({ data, isDark, devices, timeframe, selectedDeviceMac }: WaterLevelChartProps) {
+export default function WaterLevelChart({ data, isDark, devices, timeframe, selectedDeviceMac }: any) {
   const [activeTab, setActiveTab] = useState<'level' | 'temp' | 'humid'>('level');
 
   const typeColors: any = {
@@ -25,83 +17,72 @@ export default function WaterLevelChart({ data, isDark, devices, timeframe, sele
     const timelineMap = new Map();
     const now = new Date();
 
-    // 🌟 1. สร้างแกนเวลาเปล่าถอยหลัง (ใช้ปี/เดือน/วัน เป็น Key เพื่อกันเรื่อง Timezone)
-    const iterations = timeframe === 'year' ? 12 : timeframe === 'month' ? 30 : timeframe === 'week' ? 7 : 0;
-    
+    const getMapKey = (d: Date) => {
+      if (timeframe === 'day') return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      if (timeframe === 'year') return d.toLocaleDateString('en-US', { month: 'short' });
+      return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short' });
+    };
+
+    // 1. จองแกนเวลา (ถอยหลังไปตามช่วงเวลา)
+    const iterations = timeframe === 'year' ? 12 : timeframe === 'month' ? 30 : timeframe === 'week' ? 7 : 48; // รายวันจอง 48 จุด (ทุก 30 นาที)
     for (let i = iterations; i >= 0; i--) {
-      const d = new Date();
+      const d = new Date(now);
       if (timeframe === 'year') d.setMonth(now.getMonth() - i);
+      else if (timeframe === 'day') d.setMinutes(now.getMinutes() - (i * 30));
       else d.setDate(now.getDate() - i);
-
-      // สร้าง Key ที่เป็นมาตรฐาน (ISO Date) เพื่อเอาไว้แมพข้อมูล
-      const dateKey = timeframe === 'year' 
-        ? d.toLocaleDateString('th-TH', { month: 'long' })
-        : d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
-
-      timelineMap.set(dateKey, { 
-        time: dateKey, 
-        timestamp: d.setHours(0,0,0,0), // ตั้งเป็นต้นวันเพื่อการ Sort
-        level: 0, temp: 0, humid: 0 
-      });
+      const key = getMapKey(d);
+      timelineMap.set(key, { time: key, timestamp: d.getTime(), level: 0, temp: 0, humid: 0 });
     }
 
-    // 🌟 2. นำข้อมูลจริงมาหยอด
+    // 2. หยอดข้อมูลจริง
     if (data && data.length > 0) {
-      data.forEach(log => {
-        const date = new Date(log.createdAt || log.timestamp);
-        let key = "";
+      data.forEach((log: any) => {
+        const d = new Date(log.createdAt || log.timestamp);
+        const key = getMapKey(d);
         
-        if (timeframe === 'day') {
-          key = date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-        } else if (timeframe === 'year') {
-          key = date.toLocaleDateString('th-TH', { month: 'long' });
-        } else {
-          key = date.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
-        }
+        // 🌟 กรองค่าที่ผิดปกติ (เช่น เซนเซอร์ดีดไป 300-400 ทั้งที่ถังสูงแค่ 30)
+        let rawLevel = Number(log.level || 0);
+        if (rawLevel > 150) rawLevel = 0; // ถ้าเกิน 150cm (เมตรครึ่ง) ให้ถือว่าค่าเพี้ยน
 
         const val = {
-          level: Number(log.level || 0),
+          level: rawLevel,
           temp: Number(log.temperature || 0),
           humid: Number(log.air_humidity || log.humidity || 0)
         };
 
-        if (timeframe === 'day') {
-          // รายวัน: ถ้าไม่มี Key นี้ให้สร้างใหม่ (เพราะ Day เราไม่ได้จอง Timeline ไว้ล่วงหน้า)
-          if (!timelineMap.has(key)) {
-            timelineMap.set(key, { time: key, timestamp: date.getTime(), ...val });
-          } else {
-            const entry = timelineMap.get(key);
-            entry.level = val.level; entry.temp = val.temp; entry.humid = val.humid;
-          }
-        } else if (timelineMap.has(key)) {
-          // รายอื่น: หยอดลงช่องที่จองไว้
+        if (timelineMap.has(key)) {
           const entry = timelineMap.get(key);
           if (selectedDeviceMac === 'ALL') {
-            const device = devices.find(d => d.mac === log.mac);
-            const name = device?.name || 'Unknown';
+            const dev = devices.find((x: any) => x.mac === log.mac);
+            const name = dev?.name || 'Unknown';
             entry[`${name}_${activeTab}`] = val[activeTab];
           } else {
             entry.level = val.level; entry.temp = val.temp; entry.humid = val.humid;
           }
+        } else if (timeframe === 'day') {
+          timelineMap.set(key, { time: key, timestamp: d.getTime(), ...val });
         }
       });
     }
 
-    const result = Array.from(timelineMap.values()).sort((a: any, b: any) => a.timestamp - b.timestamp);
-    console.log("Chart Data Debug:", result); // ดูใน Console ได้ว่าข้อมูลมาไหม
-    return result;
+    return Array.from(timelineMap.values()).sort((a: any, b: any) => a.timestamp - b.timestamp);
   }, [data, timeframe, devices, selectedDeviceMac, activeTab]);
 
+  // 🌟 ปรับปรุงการหาค่า Max (ไม่ให้โดดตามค่า Error)
   const maxValue = useMemo(() => {
-    let max = 5; // ตั้งพื้นฐานไว้ 5
+    let max = 0;
     chartData.forEach((d: any) => {
       Object.keys(d).forEach(k => {
-        if (k.includes(activeTab) || k === 'level' || k === 'temp' || k === 'humid') {
-          if (typeof d[k] === 'number' && d[k] > max) max = d[k];
+        if (k.includes(activeTab) || ['level', 'temp', 'humid'].includes(k)) {
+          const v = Number(d[k]);
+          if (v > max && v < 150) max = v; // สนใจเฉพาะค่าที่ไม่เกิน 150
         }
       });
     });
-    return Math.ceil(max * 1.2);
+    
+    // ถ้าเป็นระดับน้ำ ให้ล็อคความสูงตามถัง (สมมติถังสูง 30cm) หรือตามค่าจริง
+    if (activeTab === 'level') return max > 30 ? Math.ceil(max * 1.2) : 35; 
+    return Math.ceil(max * 1.2) || 40;
   }, [chartData, activeTab]);
 
   return (
@@ -130,11 +111,12 @@ export default function WaterLevelChart({ data, isDark, devices, timeframe, sele
             </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#334155' : '#e2e8f0'} />
             <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 9}} minTickGap={30} />
+            {/* 🌟 บังคับ Domain ให้เริ่มที่ 0 เสมอ */}
             <YAxis domain={[0, maxValue]} axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
             <Tooltip contentStyle={{ borderRadius: '15px', border: 'none', background: isDark ? '#1e293b' : '#fff', fontSize: '12px' }} />
             
             {selectedDeviceMac === 'ALL' ? (
-              devices.map((d, i) => (
+              devices.map((d: any, i: number) => (
                 <Area key={d.mac} type="monotone" name={d.name} dataKey={`${d.name}_${activeTab}`} stroke={["#10b981", "#3b82f6", "#f59e0b"][i % 3]} fillOpacity={0} strokeWidth={2.5} connectNulls />
               ))
             ) : (
