@@ -8,32 +8,72 @@ export async function GET(request: Request) {
   try {
     await connectDB();
     
-    // ดึง MAC Address จาก URL (ที่ ESP32 ส่งมาถาม)
     const { searchParams } = new URL(request.url);
     const mac = searchParams.get('mac');
 
-    if (!mac) return NextResponse.json({ error: 'MAC required' }, { status: 400 });
+    // 💡 แก้ปัญหา 400 Bad Request: ถ้าไม่มี MAC (เช่น หน้าเว็บเรียก) ให้ส่งค่า Default กลับไป
+    if (!mac) {
+      return NextResponse.json({
+        isActive: true,
+        isBuzzerEnabled: true,
+        systemOn: true,      // เผื่อโค้ดหน้าเว็บดึงชื่อนี้
+        buzzerOn: true,      // เผื่อโค้ดหน้าเว็บดึงชื่อนี้
+        installHeight: 13.5,
+        warningThreshold: 2.8,
+        criticalThreshold: 3.0,
+        note: "Default settings sent because MAC is missing"
+      });
+    }
 
-    // ไปหาข้อมูลอุปกรณ์ตัวนี้ในฐานข้อมูล
+    // ไปหาข้อมูลอุปกรณ์ตาม MAC Address
     const device = await Device.findOne({ mac });
 
     if (!device) {
       return NextResponse.json({ error: 'Device not found' }, { status: 404 });
     }
 
-    // 🌟 ส่งค่ากลับไปให้บอร์ด (ต้องใช้ชื่อ Key ให้ตรงกับที่ ESP32 รออ่าน)
+    // 🌟 ส่งค่ากลับไป (รองรับทั้งบอร์ด ESP32 และหน้า Dashboard)
     return NextResponse.json({
-      isActive: device.isActive,           // สถานะเปิด/ปิดระบบ
-      isBuzzerEnabled: device.isBuzzerEnabled, // สถานะเปิด/ปิดเสียง
+      isActive: device.isActive,
+      isBuzzerEnabled: device.isBuzzerEnabled,
+      systemOn: device.isActive,       // Mapping ค่าให้ตรงกับที่หน้าเว็บอาจจะเรียกใช้
+      buzzerOn: device.isBuzzerEnabled, // Mapping ค่าให้ตรงกับที่หน้าเว็บอาจจะเรียกใช้
       installHeight: device.installHeight || 13.5,
       warningThreshold: device.warningThreshold || 2.8,
       criticalThreshold: device.criticalThreshold || 3.0
     });
 
   } catch (error: any) {
+    console.error("❌ SETTINGS API ERROR:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-// ส่วน POST ถ้าพี่ใช้หน้า Admin แก้ไขข้อมูลโดยตรงผ่าน API อื่นอยู่แล้ว 
-// ไฟล์นี้อาจจะไม่ต้องมี POST ก็ได้ครับ เพราะเราเน้นให้ ESP32 มา GET อย่างเดียว
+// 📝 ส่วน POST (กรณีต้องการอัปเดตสถานะจากหน้า Dashboard ผ่าน API นี้โดยตรง)
+export async function POST(request: Request) {
+  try {
+    await connectDB();
+    const body = await request.json();
+    const { mac, isActive, isBuzzerEnabled, systemOn, buzzerOn } = body;
+
+    if (!mac) return NextResponse.json({ error: "MAC required" }, { status: 400 });
+
+    // อัปเดตข้อมูล (รองรับชื่อตัวแปรทั้ง 2 แบบ)
+    const updateData: any = {};
+    if (isActive !== undefined) updateData.isActive = isActive;
+    else if (systemOn !== undefined) updateData.isActive = systemOn;
+
+    if (isBuzzerEnabled !== undefined) updateData.isBuzzerEnabled = isBuzzerEnabled;
+    else if (buzzerOn !== undefined) updateData.isBuzzerEnabled = buzzerOn;
+
+    const updatedDevice = await Device.findOneAndUpdate(
+      { mac },
+      { $set: updateData },
+      { new: true }
+    );
+
+    return NextResponse.json({ success: true, device: updatedDevice });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
