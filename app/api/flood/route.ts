@@ -39,8 +39,10 @@ export async function GET(request: NextRequest) {
     let query: any = { createdAt: { $gte: startDate } };
     if (mac && mac !== "null" && mac !== "undefined") query.mac = mac;
 
-    // เติม .lean() คืนค่า JSON บริสุทธิ์ หน้าเว็บเอาไปใช้จะได้ไม่ Error
-    const logs = await WaterLog.find(query).sort({ createdAt: 1 }).limit(1000).lean();
+    // 🌟 พระเอกอยู่ตรงนี้: สั่งดึง 1000 แถว "ล่าสุด" ก่อน (-1) แล้วค่อยพลิกกลับ (reverse) ให้กราฟเรียงสวยๆ
+    let logs = await WaterLog.find(query).sort({ createdAt: -1 }).limit(1000).lean();
+    logs = logs.reverse(); 
+    
     return NextResponse.json(logs || []); 
   } catch (error: any) {
     return NextResponse.json([]); 
