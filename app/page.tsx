@@ -5,6 +5,7 @@ import { useTheme } from 'next-themes';
 import dynamic from 'next/dynamic';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation'; 
+import Link from 'next/link'; // 🌟 เพิ่ม Link สำหรับไปหน้า Analytics
 
 // 🌟 Import Components
 import WaterLevelChart from '@/components/WaterLevelChart';
@@ -15,7 +16,8 @@ import {
   Activity, CheckCircle2, ShieldAlert, AlertTriangle, 
   Database, Clock, Signal, Zap, Loader2, Download,
   Cloud, CloudRain, CloudLightning, Sun, MapPin,
-  ArrowUpRight, ArrowDownRight, Minus, Wifi, WifiOff, Wind
+  ArrowUpRight, ArrowDownRight, Minus, Wifi, WifiOff, Wind,
+  BarChart3, Thermometer, Droplets, Waves
 } from 'lucide-react';
 
 const DeviceMap = dynamic(() => import('@/components/DeviceMap'), { 
@@ -89,7 +91,6 @@ export default function Home() {
     }
   }, [fetchData, status]);
 
-  // 🌊 [แก้ไข] ใช้ค่าระดับน้ำจากบอร์ดตรงๆ ไม่ต้องลบ installHeight
   const calculateWater = useCallback((level: any) => {
     const raw = Number(level);
     return isNaN(raw) ? 0 : Math.max(0, raw);
@@ -99,6 +100,26 @@ export default function Home() {
     if (!Array.isArray(logs) || logs.length === 0) return [];
     return selectedDeviceMac === 'ALL' ? logs : logs.filter(l => (l.mac || l.device_id) === selectedDeviceMac);
   }, [logs, selectedDeviceMac]);
+
+  // 🌟 [เพิ่มใหม่] คำนวณค่าเฉลี่ยสำหรับ Quick Stats
+  const avgStats = useMemo(() => {
+    if (activeLogs.length === 0) return { level: 0, temp: 0, humid: 0 };
+    const validLogs = activeLogs.filter(l => Number(l.level) < 150); // กรองค่าเพี้ยน
+    if (validLogs.length === 0) return { level: 0, temp: 0, humid: 0 };
+
+    const sum = validLogs.reduce((acc, log) => ({
+      level: acc.level + Number(log.level || 0),
+      temp: acc.temp + Number(log.temperature || 0),
+      humid: acc.humid + (Number(log.air_humidity || log.humidity || 0))
+    }), { level: 0, temp: 0, humid: 0 });
+
+    const count = validLogs.length;
+    return {
+      level: (sum.level / count).toFixed(2),
+      temp: (sum.temp / count).toFixed(1),
+      humid: (sum.humid / count).toFixed(1)
+    };
+  }, [activeLogs]);
 
   const isOffline = useMemo(() => {
     if (activeLogs.length === 0) return true;
@@ -136,7 +157,8 @@ export default function Home() {
       const latestLog = activeLogs[activeLogs.length - 1];
       const crit = activeThresholds.critical;
       const currentWater = calculateWater(latestLog.level);
-      const maxWater = Math.max(...activeLogs.map(l => calculateWater(l.level)));
+      const validForMax = activeLogs.filter(l => Number(l.level) < 150);
+      const maxWater = validForMax.length > 0 ? Math.max(...validForMax.map(l => calculateWater(l.level))) : 0;
       const latestTime = new Date(latestLog?.createdAt || Date.now()).getTime();
       const thirtyMinsAgo = latestTime - (30 * 60000);
       const oldLog = activeLogs.find(l => new Date(l.createdAt).getTime() >= thirtyMinsAgo) || activeLogs[0];
@@ -236,6 +258,7 @@ export default function Home() {
 
       <main className="max-w-[1600px] mx-auto p-4 sm:p-6 space-y-6 relative z-10">
         
+        {/* 🌟 Header & Current Status */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className={`lg:col-span-8 p-6 sm:p-8 rounded-[2.5rem] shadow-2xl flex flex-col justify-between relative overflow-hidden transition-all backdrop-blur-xl ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
             <div className="flex justify-between items-start relative z-10">
@@ -300,6 +323,7 @@ export default function Home() {
           </div>
         </div>
 
+        {/* 🌟 Current Stat Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
            <StatCard icon={<Activity />} label="Highest" value={activeLogs.length > 0 ? insights.maxWater.toFixed(2) : '-'} unit="cm" isDark={isDark} />
            <StatCard icon={signalStatus.icon} label="Signal Status" value={signalStatus.label} valueColor={signalStatus.color} isDark={isDark} />
@@ -307,11 +331,49 @@ export default function Home() {
            <StatCard icon={<Clock />} label="Update" value={insights.lastUpdate} isDark={isDark} />
         </div>
 
+        {/* 🌟 📊 Quick Average Stats (สรุปตาม Timeframe) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className={`p-5 rounded-3xl border transition-all ${isDark ? 'bg-blue-500/10 border-blue-500/20 shadow-[0_8px_30px_rgb(59,130,246,0.1)]' : 'bg-blue-50 border-blue-100 shadow-sm'}`}>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-blue-500 rounded-lg text-white"><Waves size={16} /></div>
+              <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Avg Water Level</p>
+            </div>
+            <p className={`text-3xl font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>{avgStats.level} <span className="text-xs font-bold text-slate-500">cm</span></p>
+            <p className="text-[9px] text-slate-400 mt-1 uppercase font-bold">Based on selected {timeframe}</p>
+          </div>
+
+          <div className={`p-5 rounded-3xl border transition-all ${isDark ? 'bg-orange-500/10 border-orange-500/20 shadow-[0_8px_30px_rgb(249,115,22,0.1)]' : 'bg-orange-50 border-orange-100 shadow-sm'}`}>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-orange-500 rounded-lg text-white"><Thermometer size={16} /></div>
+              <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">Avg Temperature</p>
+            </div>
+            <p className={`text-3xl font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>{avgStats.temp} <span className="text-xs font-bold text-slate-500">°C</span></p>
+            <p className="text-[9px] text-slate-400 mt-1 uppercase font-bold">Based on selected {timeframe}</p>
+          </div>
+
+          <div className={`p-5 rounded-3xl border transition-all ${isDark ? 'bg-emerald-500/10 border-emerald-500/20 shadow-[0_8px_30px_rgb(16,185,129,0.1)]' : 'bg-emerald-50 border-emerald-100 shadow-sm'}`}>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-emerald-500 rounded-lg text-white"><Droplets size={16} /></div>
+              <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Avg Humidity</p>
+            </div>
+            <p className={`text-3xl font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>{avgStats.humid} <span className="text-xs font-bold text-slate-500">%</span></p>
+            <p className="text-[9px] text-slate-400 mt-1 uppercase font-bold">Based on selected {timeframe}</p>
+          </div>
+        </div>
+
+        {/* 🌟 History Chart Section */}
         <div className={`p-6 rounded-[2.5rem] shadow-2xl backdrop-blur-xl transition-all ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
-           <div className="flex justify-between items-center mb-6">
-             <h3 className="font-bold text-sm uppercase tracking-widest text-slate-600 dark:text-slate-300 drop-shadow-sm">History</h3>
+           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+             <div>
+                <h3 className="font-bold text-sm uppercase tracking-widest text-slate-600 dark:text-slate-300 drop-shadow-sm mb-1 flex items-center gap-2">
+                   <BarChart3 size={18} className="text-blue-500" /> Sensor History
+                </h3>
+                <Link href="/analytics" className="text-[10px] font-black text-blue-500 hover:text-blue-600 flex items-center gap-1 transition-all group">
+                   VIEW FULL ANALYTICS <ArrowUpRight size={12} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                </Link>
+             </div>
+             
              <div className={`flex p-1 rounded-xl shadow-inner backdrop-blur-md ${isDark ? 'bg-black/40 border border-white/5' : 'bg-slate-200/50 border border-white/40'}`}>
-               {/* 🌟 เพิ่มปุ่ม Year (1Y) */}
                {['day', 'week', 'month', 'year'].map(t => (
                  <button key={t} onClick={() => setTimeframe(t)} className={`px-3 py-1.5 text-[10px] font-bold uppercase rounded-lg transition-all ${timeframe === t ? (isDark ? 'bg-blue-600/80 text-white shadow-md' : 'bg-white shadow-md text-blue-600') : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>
                    {t === 'year' ? '1Y' : t.toUpperCase()}
@@ -319,11 +381,13 @@ export default function Home() {
                ))}
              </div>
            </div>
+           
            <div className="h-[350px]">
               <WaterLevelChart data={activeLogs} isDark={isDark} devices={devices} timeframe={timeframe} selectedDeviceMac={selectedDeviceMac} />
            </div>
         </div>
 
+        {/* 🌟 Map & Logs Section */}
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
            <div className={`xl:col-span-7 h-[500px] rounded-[2.5rem] overflow-hidden shadow-2xl backdrop-blur-xl transition-all ${isDark ? 'border border-white/10' : 'border border-white/50'}`}>
               <DeviceMap devices={mapDevices} />
