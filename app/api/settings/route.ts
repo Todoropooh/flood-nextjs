@@ -3,6 +3,7 @@ import connectDB from '@/db/connect';
 import Device from '@/db/models/Device';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0; // 🌟 ปิดการจำค่าเก่า (Cache) ของ Next.js เด็ดขาด
 
 export async function GET(request: Request) {
   try {
@@ -10,30 +11,30 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const mac = searchParams.get('mac');
 
-    // 🌟 ถ้าไม่มี MAC (หน้า Admin เรียกดูรายการทั้งหมด)
+    // กรณีหน้า Admin โหลด
     if (!mac || mac === 'null' || mac === 'undefined') {
-      const devices = await Device.find({}).sort({ createdAt: -1 });
-      return NextResponse.json(devices || []); // ส่ง Array เสมอ ห้ามส่ง Object
+      const devices = await Device.find({}).sort({ createdAt: -1 }).lean();
+      return NextResponse.json(devices || []); 
     }
 
-    // 🌟 ถ้ามี MAC (ESP32 หรือหน้าแก้ไขรายเครื่องเรียก)
-    const device = await Device.findOne({ mac });
+    // กรณีบอร์ดหรือหน้า Dashboard โหลด
+    const device = await Device.findOne({ mac }).lean();
     if (!device) return NextResponse.json({ error: 'Device not found' }, { status: 404 });
 
+    // 🌟 ส่งข้อมูล "ทั้งหมด" กลับไปให้หน้าเว็บ (รวมถึง lastPing และ waterLevel)
     return NextResponse.json({
+      ...device, // คืนค่าทุกอย่างที่มีใน Database แบบไม่ตกหล่น
       isActive: device.isActive ?? true,
       isBuzzerEnabled: device.isBuzzerEnabled ?? true,
       systemOn: device.isActive ?? true,
       buzzerOn: device.isBuzzerEnabled ?? true,
-      installHeight: device.installHeight || 13.5,
-      warningThreshold: device.warningThreshold || 2.8,
-      criticalThreshold: device.criticalThreshold || 3.0,
-      name: device.name || "Station",
-      mac: device.mac
+      installHeight: device.installHeight || 12.6,
+      warningThreshold: device.warningThreshold || 2.0,
+      criticalThreshold: device.criticalThreshold || 5.0,
+      name: device.name || "Station"
     });
   } catch (error: any) {
-    console.error("Settings GET Error:", error.message);
-    return NextResponse.json([], { status: 200 }); // พังยังไงก็ส่ง Array ว่างกลับไป หน้าเว็บจะได้ไม่ Error
+    return NextResponse.json([], { status: 200 }); 
   }
 }
 
