@@ -21,6 +21,36 @@ async function sendTelegramMessage(message: string) {
   } catch (e) { return "Error"; }
 }
 
+/**
+ * 📥 [GET] สำหรับหน้าเว็บดึงข้อมูลไปโชว์ (แก้ 405 Method Not Allowed)
+ */
+export async function GET(request: NextRequest) {
+  try {
+    await connectDB();
+    const { searchParams } = new URL(request.url);
+    const timeframe = searchParams.get('timeframe') || 'day';
+    const mac = searchParams.get('mac');
+
+    let startDate = new Date();
+    if (timeframe === 'day') startDate.setHours(startDate.getHours() - 24);
+    else if (timeframe === 'week') startDate.setDate(startDate.getDate() - 7);
+    else if (timeframe === 'month') startDate.setMonth(startDate.getMonth() - 1);
+
+    // สร้าง Query ค้นหา
+    let query: any = { createdAt: { $gte: startDate } };
+    if (mac) query.mac = mac;
+
+    const logs = await WaterLog.find(query).sort({ createdAt: 1 });
+    
+    return NextResponse.json(logs);
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+/**
+ * 📤 [POST] สำหรับ ESP32 ส่งข้อมูลมาบันทึก
+ */
 export async function POST(request: NextRequest) {
   try {
     const payload = await request.json(); 
@@ -32,24 +62,20 @@ export async function POST(request: NextRequest) {
     const device = await Device.findOne({ mac });
     if (!device) return NextResponse.json({ error: "Device not found" }, { status: 404 });
 
-    // 🌊 ดึงค่า Config จาก Device (ใช้ค่า Default ถ้าไม่มี)
     const h = Number(device.installHeight) || 13.5;
     const warnLimit = Number(device.warningThreshold) || 2.8;
     const critLimit = Number(device.criticalThreshold) || 3.0;
 
-    // 🛠️ ปรับจูนค่าที่รับมาให้เป็นตัวเลขที่ปลอดภัย
     const currentDist = Number(level) || h;
     const currentTemp = Number(temperature) || 0;
     const currentHumid = Number(air_humidity ?? humidity) || 0;
     const currentSignal = Number(signal) || 0;
 
-    // คำนวณระดับน้ำ (Water Level)
     let wl = h - currentDist;
     if (currentDist >= (h - 0.2)) wl = 0;
     if (wl < 0) wl = 0;
     if (wl > h) wl = h;
 
-    // 🚦 ตรวจสอบสถานะน้ำ
     let currentStatus = "STABLE";
     let alertStatus = "";
     if (wl >= (critLimit - 0.05)) {
@@ -60,26 +86,23 @@ export async function POST(request: NextRequest) {
       alertStatus = "⚠️ [เฝ้าระวัง] ระดับน้ำสูง!";
     }
 
-    // 📝 1. อัปเดตสถานะล่าสุดลงในตัวอุปกรณ์ (Device)
     await Device.findOneAndUpdate({ mac }, { 
-      waterLevel: wl, // เก็บระดับน้ำจริง
+      waterLevel: wl,
       temperature: currentTemp, 
       humidity: currentHumid, 
       status: currentStatus, 
       lastPing: new Date() 
     });
 
-    // 📝 2. บันทึกประวัติ (Log) ลงใน WaterLog
     await WaterLog.create({ 
       mac, 
-      level: wl, // เก็บระดับน้ำจริงลง Log
+      level: wl,
       temperature: currentTemp, 
       air_humidity: currentHumid, 
       signal: currentSignal, 
       status: currentStatus 
     });
 
-    // 🔔 3. ส่ง Telegram (ถ้าเปิดใช้งานและถึงเกณฑ์)
     if (device.isActive && alertStatus !== "") {
       const now = Date.now();
       const lastAlert = lastAlertTime.get(mac) || 0;
