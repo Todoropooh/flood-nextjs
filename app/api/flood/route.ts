@@ -22,7 +22,7 @@ async function sendTelegramMessage(message: string) {
 }
 
 /**
- * 📥 [GET] ดึงข้อมูลไปโชว์ที่ Dashboard และกันหน้า Admin พัง
+ * 📥 [GET] ดึงข้อมูลไปโชว์ที่ Dashboard
  */
 export async function GET(request: NextRequest) {
   try {
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     let query: any = { createdAt: { $gte: startDate } };
     if (mac && mac !== "null" && mac !== "undefined") query.mac = mac;
 
-    // 🌟 พระเอกอยู่ตรงนี้: สั่งดึง 1000 แถว "ล่าสุด" ก่อน (-1) แล้วค่อยพลิกกลับ (reverse) ให้กราฟเรียงสวยๆ
+    // 🌟 ดึง 1000 แถวล่าสุดและ reverse เพื่อให้กราฟเรียงจากซ้ายไปขวา
     let logs = await WaterLog.find(query).sort({ createdAt: -1 }).limit(1000).lean();
     logs = logs.reverse(); 
     
@@ -50,13 +50,13 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * 📤 [POST] รับข้อมูลจาก ESP32
+ * 📤 [POST] รับข้อมูลจาก ESP32 (รองรับอุณหภูมิและความชื้น)
  */
 export async function POST(request: NextRequest) {
   try {
     const payload = await request.json(); 
-    // รับค่าที่บอร์ด ESP32 ส่งมา (บอร์ดคำนวณ "ระดับน้ำจากพื้น" มาให้ในตัวแปร level แล้ว!)
-    const { mac, level, signal, temperature, air_humidity } = payload;
+    // 🌟 รับค่า humidity จากบอร์ด (บอร์ดส่งมาในชื่อ humidity)
+    const { mac, level, signal, temperature, humidity } = payload;
     
     if (!mac) return NextResponse.json({ error: "MAC Required" }, { status: 400 });
 
@@ -64,45 +64,42 @@ export async function POST(request: NextRequest) {
     const device = await Device.findOne({ mac });
     if (!device) return NextResponse.json({ error: "Device not found" }, { status: 404 });
 
-    // 📏 ดึงความสูงกล่องมาแค่เพื่อเอาไว้เป็น Limit ป้องกันกราฟทะลุ
-    const h = Number(device.installHeight) || 12.6; 
-    
-    // 🌊 เอาค่าระดับน้ำที่บอร์ดส่งมา ใช้ตรงๆ เลยครับ!
+    const h = Number(device.installHeight) || 29.5; 
     let wl = Number(level) || 0; 
     
-    // ดักไว้เผื่อบอร์ดรวนส่งค่าติดลบ หรือค่าเกินความสูงกล่อง
     if (wl < 0) wl = 0;
     if (wl > h) wl = h;
 
-    // 🚦 เช็คสถานะตามเกณฑ์ที่ตั้งไว้ในหน้า Admin
-    const status = wl >= (device.criticalThreshold || 5) ? "CRITICAL" : 
-                   (wl >= (device.warningThreshold || 2) ? "WARNING" : "STABLE");
+    const status = wl >= (device.criticalThreshold || 10) ? "CRITICAL" : 
+                   (wl >= (device.warningThreshold || 5) ? "WARNING" : "STABLE");
 
-    // 📝 อัปเดตข้อมูลล่าสุดลง Device (สำหรับโชว์หน้าเว็บ Dashboard ตัวเลขใหญ่ๆ)
+    // 📝 อัปเดตข้อมูลล่าสุดลง Device (รวม Temp/Humid เพื่อโชว์หน้าเว็บ)
     await Device.findOneAndUpdate({ mac }, { 
       waterLevel: wl, 
+      temperature: Number(temperature) || 0,
+      humidity: Number(humidity) || 0, // เก็บลงฟิลด์ humidity ใน Device
       lastPing: new Date(),
       status: status
     });
 
-    // 📝 บันทึกประวัติลง WaterLog (สำหรับวาดกราฟ)
+    // 📝 บันทึกประวัติลง WaterLog (รวม Temp/Humid เพื่อวาดกราฟ)
     await WaterLog.create({ 
       mac, 
       level: wl, 
       signal: Number(signal) || 0,
       temperature: Number(temperature) || 0,
-      air_humidity: Number(air_humidity) || 0,
+      air_humidity: Number(humidity) || 0, // แมพไปที่ air_humidity ใน Log
       status: status 
     });
 
-    // 🔔 ส่งแจ้งเตือนผ่าน Telegram (ถ้าเปิดระบบและระดับน้ำเกินเกณฑ์)
+    // 🔔 ส่งแจ้งเตือนผ่าน Telegram
     if (device.isActive && status !== "STABLE") {
       const alertStatus = status === "CRITICAL" ? "🚨 [อันตราย] ระดับน้ำวิกฤต!" : "⚠️ [เฝ้าระวัง] ระดับน้ำสูง!";
       const now = Date.now();
       const lastAlert = lastAlertTime.get(mac) || 0;
       
       if (now - lastAlert > ALERT_COOLDOWN) {
-        const msg = `<b>${alertStatus}</b>\n📍 สถานี: <b>${device.name || 'Station'}</b>\n🌊 ระดับน้ำ: <code>${wl.toFixed(2)} cm</code>\n📡 สัญญาณ: ${signal || 0}`;
+        const msg = `<b>${alertStatus}</b>\n📍 สถานี: <b>${device.name || 'Station'}</b>\n🌊 ระดับน้ำ: <code>${wl.toFixed(2)} cm</code>\n🌡️ อุณหภูมิ: ${Number(temperature).toFixed(1)}°C\n💧 ความชื้น: ${Number(humidity).toFixed(1)}%`;
         await sendTelegramMessage(msg);
         lastAlertTime.set(mac, now);
       }
