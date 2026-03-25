@@ -51,7 +51,6 @@ export default function Home() {
     } catch (error) { console.error("Error fetching weather:", error); }
   };
 
-  // 🛡️ [แก้ไขแล้ว] ระบบดึงข้อมูลแบบมีเกราะป้องกัน หน้าเว็บจะไม่มีวันระเบิด!
   const fetchData = useCallback(async () => {
     if (status !== 'authenticated') return; 
     
@@ -64,13 +63,11 @@ export default function Home() {
       
       if (logRes.ok) {
         const logData = await logRes.json();
-        // 🌟 บังคับให้เป็น Array เสมอ ถ้าไม่ใช่ให้ใส่ Array ว่าง
         setLogs(Array.isArray(logData) ? logData : []);
       }
       
       if (devRes.ok) {
         const devData = await devRes.json();
-        // 🌟 ป้องกันหน้าเว็บพัง: ถ้า API ส่งก้อน Object มา ให้หุ้มด้วย Array [] ซะ!
         if (Array.isArray(devData)) {
           setDevices(devData);
         } else if (devData && typeof devData === 'object') {
@@ -92,11 +89,10 @@ export default function Home() {
     }
   }, [fetchData, status]);
 
-  const calculateWater = useCallback((level: any, installHeight: number = 13.5) => {
+  // 🌊 [แก้ไข] ใช้ค่าระดับน้ำจากบอร์ดตรงๆ ไม่ต้องลบ installHeight
+  const calculateWater = useCallback((level: any) => {
     const raw = Number(level);
-    if (isNaN(raw) || raw <= 0) return 0;
-    if (raw > installHeight) return installHeight;
-    return raw; 
+    return isNaN(raw) ? 0 : Math.max(0, raw);
   }, []);
 
   const activeLogs = useMemo(() => {
@@ -106,17 +102,16 @@ export default function Home() {
 
   const isOffline = useMemo(() => {
     if (activeLogs.length === 0) return true;
-    const lastLogTime = new Date(activeLogs[activeLogs.length - 1].createdAt || activeLogs[activeLogs.length - 1].timestamp).getTime();
+    const lastLog = activeLogs[activeLogs.length - 1];
+    const lastLogTime = new Date(lastLog.createdAt || lastLog.timestamp).getTime();
     return (Date.now() - lastLogTime) > 15 * 60 * 1000; 
   }, [activeLogs]);
 
   const waterInTank = useMemo(() => {
     if (activeLogs.length === 0) return 0;
     const lastEntry = activeLogs[activeLogs.length - 1];
-    const safeDevices = Array.isArray(devices) ? devices : [];
-    const device = safeDevices.find(d => d.mac === (lastEntry.mac || lastEntry.device_id));
-    return calculateWater(lastEntry?.level, device?.installHeight ?? 13.5);
-  }, [activeLogs, calculateWater, devices]);
+    return calculateWater(lastEntry?.level);
+  }, [activeLogs, calculateWater]);
 
   const activeThresholds = useMemo(() => {
     const safeDevices = Array.isArray(devices) ? devices : [];
@@ -139,15 +134,14 @@ export default function Home() {
     if (activeLogs.length < 2) return { maxWater: 0, avgSignal: 0, rateOfChange: 0, timeToFlood: '-', lastUpdate: '-', percentToCritical: 0 };
     try {
       const latestLog = activeLogs[activeLogs.length - 1];
-      const h = activeThresholds.installHeight;
       const crit = activeThresholds.critical;
-      const currentWater = calculateWater(latestLog.level, h);
-      const maxWater = Math.max(...activeLogs.map(l => calculateWater(l.level, h)));
+      const currentWater = calculateWater(latestLog.level);
+      const maxWater = Math.max(...activeLogs.map(l => calculateWater(l.level)));
       const latestTime = new Date(latestLog?.createdAt || Date.now()).getTime();
       const thirtyMinsAgo = latestTime - (30 * 60000);
       const oldLog = activeLogs.find(l => new Date(l.createdAt).getTime() >= thirtyMinsAgo) || activeLogs[0];
       const hourDiff = (latestTime - new Date(oldLog.createdAt).getTime()) / 3600000;
-      const rate = hourDiff > 0 ? (currentWater - calculateWater(oldLog.level, h)) / hourDiff : 0;
+      const rate = hourDiff > 0 ? (currentWater - calculateWater(oldLog.level)) / hourDiff : 0;
 
       let timeStr = "Stable";
       if (rate > 0.05 && currentWater < crit) {
@@ -165,7 +159,7 @@ export default function Home() {
         lastUpdate: latestLog?.createdAt ? new Date(latestLog.createdAt).toLocaleTimeString('th-TH') : 'N/A',
         percentToCritical: Math.min(100, (currentWater / crit) * 100)
       };
-    } catch (e) { return { maxWater: 0, avgSignal: 0, rateOfChange: 0, timeToFlood: null, lastUpdate: 'Error', percentToCritical: 0 }; }
+    } catch (e) { return { maxWater: 0, avgSignal: 0, rateOfChange: 0, timeToFlood: '-', lastUpdate: 'Error', percentToCritical: 0 }; }
   }, [activeLogs, calculateWater, activeThresholds]);
 
   const signalStatus = useMemo(() => {
@@ -183,7 +177,7 @@ export default function Home() {
       const dLogs = logs.filter(l => (l.mac || l.device_id) === d.mac);
       if(dLogs.length === 0) return { ...d, currentLevel: 0, status: 'offline' };
       const last = dLogs[dLogs.length - 1];
-      const lvl = calculateWater(last.level, d.installHeight ?? 13.5);
+      const lvl = calculateWater(last.level);
       let stat = 'safe';
       if(lvl >= (d.criticalThreshold ?? 3.0) - 0.05) stat = 'danger';
       else if(lvl >= (d.warningThreshold ?? 2.8) - 0.05) stat = 'warning';
@@ -197,7 +191,7 @@ export default function Home() {
     const rows = activeLogs.map(l => [
       new Date(l.createdAt || l.timestamp).toLocaleString(),
       l.mac || l.device_id,
-      calculateWater(l.level, activeThresholds.installHeight).toFixed(2),
+      calculateWater(l.level).toFixed(2),
       l.signal || 0
     ]);
     const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
@@ -236,11 +230,7 @@ export default function Home() {
     <div className="min-h-screen font-sans pb-24 md:pb-10 relative overflow-hidden transition-colors duration-300">
       
       <div className="fixed inset-0 -z-10 bg-[#0f172a]">
-        <img 
-          src="https://images.pexels.com/photos/1295138/pexels-photo-1295138.jpeg" 
-          className="w-full h-full object-cover opacity-100"
-          alt="background"
-        />
+        <img src="https://images.pexels.com/photos/1295138/pexels-photo-1295138.jpeg" className="w-full h-full object-cover opacity-100" alt="background" />
         <div className="absolute inset-0 bg-slate-100/50 dark:bg-black/70 backdrop-blur-[40px] transition-colors duration-500" />
       </div>
 
@@ -321,9 +311,10 @@ export default function Home() {
            <div className="flex justify-between items-center mb-6">
              <h3 className="font-bold text-sm uppercase tracking-widest text-slate-600 dark:text-slate-300 drop-shadow-sm">History</h3>
              <div className={`flex p-1 rounded-xl shadow-inner backdrop-blur-md ${isDark ? 'bg-black/40 border border-white/5' : 'bg-slate-200/50 border border-white/40'}`}>
-               {['day', 'week', 'month'].map(t => (
+               {/* 🌟 เพิ่มปุ่ม Year (1Y) */}
+               {['day', 'week', 'month', 'year'].map(t => (
                  <button key={t} onClick={() => setTimeframe(t)} className={`px-3 py-1.5 text-[10px] font-bold uppercase rounded-lg transition-all ${timeframe === t ? (isDark ? 'bg-blue-600/80 text-white shadow-md' : 'bg-white shadow-md text-blue-600') : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>
-                   {t.toUpperCase()}
+                   {t === 'year' ? '1Y' : t.toUpperCase()}
                  </button>
                ))}
              </div>

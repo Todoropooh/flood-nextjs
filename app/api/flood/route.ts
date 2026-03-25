@@ -34,12 +34,13 @@ export async function GET(request: NextRequest) {
     let startDate = new Date();
     if (timeframe === 'day') startDate.setHours(startDate.getHours() - 24);
     else if (timeframe === 'week') startDate.setDate(startDate.getDate() - 7);
-    else startDate.setMonth(startDate.getMonth() - 1);
+    else if (timeframe === 'month') startDate.setMonth(startDate.getMonth() - 1);
+    else if (timeframe === 'year') startDate.setFullYear(startDate.getFullYear() - 1); // 🌟 รองรับการดึงข้อมูล 1 ปี
 
     let query: any = { createdAt: { $gte: startDate } };
     if (mac && mac !== "null" && mac !== "undefined") query.mac = mac;
 
-    // 🌟 ดึง 1000 แถวล่าสุดและ reverse เพื่อให้กราฟเรียงจากซ้ายไปขวา
+    // 🌟 ดึง 1000 แถวล่าสุดและ reverse เพื่อให้กราฟเรียงจากซ้ายไปขวา (อดีต -> ปัจจุบัน)
     let logs = await WaterLog.find(query).sort({ createdAt: -1 }).limit(1000).lean();
     logs = logs.reverse(); 
     
@@ -50,12 +51,11 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * 📤 [POST] รับข้อมูลจาก ESP32 (รองรับอุณหภูมิและความชื้น)
+ * 📤 [POST] รับข้อมูลจาก ESP32
  */
 export async function POST(request: NextRequest) {
   try {
     const payload = await request.json(); 
-    // 🌟 รับค่า humidity จากบอร์ด (บอร์ดส่งมาในชื่อ humidity)
     const { mac, level, signal, temperature, humidity } = payload;
     
     if (!mac) return NextResponse.json({ error: "MAC Required" }, { status: 400 });
@@ -67,32 +67,33 @@ export async function POST(request: NextRequest) {
     const h = Number(device.installHeight) || 29.5; 
     let wl = Number(level) || 0; 
     
+    // ป้องกันค่าเพี้ยน
     if (wl < 0) wl = 0;
     if (wl > h) wl = h;
 
     const status = wl >= (device.criticalThreshold || 10) ? "CRITICAL" : 
                    (wl >= (device.warningThreshold || 5) ? "WARNING" : "STABLE");
 
-    // 📝 อัปเดตข้อมูลล่าสุดลง Device (รวม Temp/Humid เพื่อโชว์หน้าเว็บ)
+    // 📝 อัปเดต Device ล่าสุด
     await Device.findOneAndUpdate({ mac }, { 
       waterLevel: wl, 
       temperature: Number(temperature) || 0,
-      humidity: Number(humidity) || 0, // เก็บลงฟิลด์ humidity ใน Device
+      humidity: Number(humidity) || 0,
       lastPing: new Date(),
       status: status
     });
 
-    // 📝 บันทึกประวัติลง WaterLog (รวม Temp/Humid เพื่อวาดกราฟ)
+    // 📝 บันทึกประวัติ Log (ใช้ air_humidity ให้ตรงกับโมเดลเดิม)
     await WaterLog.create({ 
       mac, 
       level: wl, 
       signal: Number(signal) || 0,
       temperature: Number(temperature) || 0,
-      air_humidity: Number(humidity) || 0, // แมพไปที่ air_humidity ใน Log
+      air_humidity: Number(humidity) || 0, 
       status: status 
     });
 
-    // 🔔 ส่งแจ้งเตือนผ่าน Telegram
+    // 🔔 แจ้งเตือน Telegram
     if (device.isActive && status !== "STABLE") {
       const alertStatus = status === "CRITICAL" ? "🚨 [อันตราย] ระดับน้ำวิกฤต!" : "⚠️ [เฝ้าระวัง] ระดับน้ำสูง!";
       const now = Date.now();
