@@ -43,6 +43,12 @@ const DeviceSchema = new mongoose.Schema({
   isBuzzerEnabled: { 
     type: Boolean, 
     default: true 
+  },
+
+  // 📱 [NEW] เบอร์โทรศัพท์สำหรับรับ SMS แจ้งเตือนตอนไฟดับ
+  phoneNumber: { 
+    type: String, 
+    default: '' 
   }
 
 }, { timestamps: true });

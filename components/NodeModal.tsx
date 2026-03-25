@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { XCircle, ImageIcon, Loader2, MapPin, Power, Volume2, VolumeX, BellRing, Settings, Save, Cpu } from 'lucide-react';
+import { XCircle, ImageIcon, Loader2, MapPin, Power, Volume2, VolumeX, BellRing, Settings, Save, Cpu, Smartphone, Zap, Send } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
 const LocationPickerMap = dynamic(() => import('./LocationPickerMap'), { 
@@ -21,10 +21,10 @@ interface NodeModalProps {
 
 export default function NodeModal({ isOpen, modalAnim, editingId, initialData, onClose, onSubmit, isSaving }: NodeModalProps) {
   const [formData, setFormData] = useState<any>({});
+  const [isTestingSms, setIsTestingSms] = useState(false); // 🌟 State สำหรับปุ่มทดสอบ SMS
 
   useEffect(() => {
     if (isOpen) {
-      // 🛡️ ปรับการเช็คข้อมูลให้ปลอดภัยขึ้น กันหน้าจอขาว (Application Error)
       const data = initialData || {};
       setFormData({
         _id: data._id || null,
@@ -33,7 +33,8 @@ export default function NodeModal({ isOpen, modalAnim, editingId, initialData, o
         image: data.image || '',
         isActive: data.isActive ?? true,
         isBuzzerEnabled: data.isBuzzerEnabled ?? true,
-        // 🌟 ปรับค่าเริ่มต้นให้ใกล้เคียงหน้างานพี่ (หรือใช้ค่าจาก DB ถ้ามี)
+        isSmsEnabled: data.isSmsEnabled ?? true,
+        phoneNumber: data.phoneNumber || '',
         installHeight: data.installHeight ?? 29.5, 
         warningThreshold: data.warningThreshold ?? 5.0,
         criticalThreshold: data.criticalThreshold ?? 10.0,
@@ -43,8 +44,39 @@ export default function NodeModal({ isOpen, modalAnim, editingId, initialData, o
     }
   }, [initialData, isOpen]);
 
+  // 🚀 ฟังก์ชันกดทดสอบส่ง SMS
+  const handleTestSms = async () => {
+    if (!formData.phoneNumber) {
+      alert("⚠️ กรุณากรอกเบอร์โทรศัพท์ก่อนทดสอบครับ");
+      return;
+    }
+    if (!confirm(`ส่งข้อความทดสอบไปยังเบอร์ ${formData.phoneNumber} ใช่หรือไม่?`)) return;
+
+    setIsTestingSms(true);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          mac: formData.mac, 
+          testSms: true,
+          phoneNumber: formData.phoneNumber // ส่งเบอร์ไปด้วยเผื่อพี่ยังไม่ได้กด Save ใหญ่
+        })
+      });
+      if (res.ok) {
+        alert("🚀 ส่งคำสั่งทดสอบสำเร็จ! บอร์ดจะส่ง SMS ภายใน 5-10 วินาทีครับ");
+      } else {
+        alert("❌ ไม่สามารถส่งคำสั่งได้ กรุณาลองใหม่");
+      }
+    } catch (error) {
+      alert("❌ เกิดข้อผิดพลาดในการเชื่อมต่อ API");
+    } finally {
+      setIsTestingSms(false);
+    }
+  };
+
   const handleImageProcess = (e: any) => {
-    const file = e.target.files?.[0]; // 🛡️ กัน Error ถ้ากด cancel
+    const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -98,17 +130,6 @@ export default function NodeModal({ isOpen, modalAnim, editingId, initialData, o
                 className="w-full p-4 bg-white/40 dark:bg-black/40 border border-white/40 dark:border-white/10 rounded-2xl outline-none text-sm font-mono focus:border-blue-500 transition-all" />
             </div>
 
-            {/* Image Box */}
-            <div className="col-span-1 md:col-span-2 p-5 bg-white/30 dark:bg-black/20 border border-white/40 dark:border-white/10 rounded-[2rem] flex items-center gap-6">
-               <div className="w-20 h-20 bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-white/50 flex items-center justify-center shrink-0 shadow-lg">
-                 {formData.image ? <img src={formData.image} className="w-full h-full object-cover" alt="preview" /> : <ImageIcon size={24} className="text-slate-300"/>}
-               </div>
-               <div className="flex flex-col gap-1">
-                 <label className="text-[10px] font-black uppercase text-blue-600">Physical Photo</label>
-                 <input type="file" accept="image/*" onChange={handleImageProcess} className="text-[10px] file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-600 file:text-white cursor-pointer" />
-               </div>
-            </div>
-
             {/* Metrics */}
             <div className="col-span-1 md:col-span-2 grid grid-cols-3 gap-4 bg-white/20 dark:bg-black/10 p-2 rounded-[1.8rem] border border-white/20">
                <MetricInput label="Height" unit="cm" value={formData.installHeight} color="text-blue-500" onChange={(v:any) => setFormData({...formData, installHeight: v})} />
@@ -120,6 +141,31 @@ export default function NodeModal({ isOpen, modalAnim, editingId, initialData, o
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <GlassSwitch label="Active" icon={<Power size={18}/>} isActive={formData.isActive} onToggle={() => setFormData((p:any)=>({...p, isActive: !p.isActive}))} color="bg-blue-600" />
             <GlassSwitch label="Buzzer" icon={formData.isBuzzerEnabled ? <Volume2 size={18}/> : <VolumeX size={18}/>} isActive={formData.isBuzzerEnabled} onToggle={() => setFormData((p:any)=>({...p, isBuzzerEnabled: !p.isBuzzerEnabled}))} color="bg-emerald-500" />
+            <GlassSwitch label="SMS Alert" icon={<Zap size={18}/>} isActive={formData.isSmsEnabled} onToggle={() => setFormData((p:any)=>({...p, isSmsEnabled: !p.isSmsEnabled}))} color="bg-orange-500" />
+            
+            {/* 📱 Phone Number Input + Test Button */}
+            <div className="flex flex-col p-4 bg-white/40 dark:bg-black/40 border border-white/50 rounded-[1.8rem] backdrop-blur-md">
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-[9px] font-black uppercase text-slate-500 ml-2 flex items-center gap-1"><Smartphone size={10} /> Recipient Phone</label>
+                {/* 🔘 ปุ่ม Test Send อยู่ตรงนี้ครับ */}
+                <button 
+                  type="button" 
+                  onClick={handleTestSms}
+                  disabled={isTestingSms || isSaving}
+                  className="px-2 py-0.5 bg-orange-500 hover:bg-orange-600 text-white text-[8px] font-black uppercase rounded-lg shadow-md transition-all flex items-center gap-1 disabled:opacity-50"
+                >
+                  {isTestingSms ? <Loader2 size={8} className="animate-spin" /> : <Send size={8} />}
+                  Test
+                </button>
+              </div>
+              <input 
+                type="text" 
+                placeholder="0XXXXXXXXX" 
+                value={formData.phoneNumber || ''} 
+                onChange={e => setFormData({...formData, phoneNumber: e.target.value})}
+                className="bg-transparent px-2 text-sm font-black outline-none placeholder:text-slate-400 dark:text-white"
+              />
+            </div>
           </div>
 
           {/* Map */}
@@ -140,6 +186,7 @@ export default function NodeModal({ isOpen, modalAnim, editingId, initialData, o
   );
 }
 
+// ... ส่วน MetricInput และ GlassSwitch เหมือนเดิม ...
 function MetricInput({ label, unit, value, color, onChange }: any) {
   return (
     <div className="flex flex-col items-center p-3 space-y-1">
