@@ -22,41 +22,80 @@ export default function WaterLevelChart({ data, isDark, devices, timeframe, sele
   };
 
   const chartData = useMemo(() => {
-    if (!data || data.length === 0) return [];
+    const processedMap = new Map();
+    const now = new Date();
+    
+    // 🌟 1. สร้างแกนเวลาเปล่าตามช่วงเวลา (เพื่อให้กราฟย้อนไปเต็มแม้ไม่มีข้อมูล)
+    if (timeframe === 'month') {
+      for (let i = 30; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(now.getDate() - i);
+        const key = d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
+        processedMap.set(key, { time: key, timestamp: d.getTime(), level: 0, temp: 0, humid: 0 });
+      }
+    } else if (timeframe === 'year') {
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date();
+        d.setMonth(now.getMonth() - i);
+        const key = d.toLocaleDateString('th-TH', { month: 'long' });
+        processedMap.set(key, { time: key, timestamp: d.getTime(), level: 0, temp: 0, humid: 0 });
+      }
+    } else if (timeframe === 'week') {
+      for (let i = 7; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(now.getDate() - i);
+        const key = d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
+        processedMap.set(key, { time: key, timestamp: d.getTime(), level: 0, temp: 0, humid: 0 });
+      }
+    }
 
-    // 🌟 กระจายจุดข้อมูล (Sampling) ไม่ให้กองรวมกัน
-    let step = 1;
-    if (timeframe === 'week') step = Math.max(1, Math.floor(data.length / 200));
-    if (timeframe === 'month') step = Math.max(1, Math.floor(data.length / 400));
-    if (timeframe === 'year') step = Math.max(1, Math.floor(data.length / 600));
-
-    return data
-      .filter((_, index) => index % step === 0)
-      .map((log) => {
+    // 🌟 2. นำข้อมูลจริงมา Mapping ลงในแกนเวลา
+    if (data && Array.isArray(data)) {
+      data.forEach(log => {
         const date = new Date(log.createdAt || log.timestamp);
+        let key = "";
+        
+        if (timeframe === 'day') {
+          key = date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+        } else if (timeframe === 'year') {
+          key = date.toLocaleDateString('th-TH', { month: 'long' });
+        } else {
+          key = date.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
+        }
+
         const deviceMac = log.mac || log.device_id;
         const device = devices.find(d => d.mac === deviceMac);
         const deviceName = device?.name || 'Unknown';
 
-        let displayTime = "";
-        if (timeframe === 'day') displayTime = date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-        else displayTime = date.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' }) + " " + date.getHours() + ":00";
-
-        const base = {
-          time: displayTime,
-          timestamp: date.getTime(),
+        const val = {
           level: Number(log.level || 0),
           temp: Number(log.temperature || 0),
-          humid: Number(log.air_humidity || log.humidity || 0),
+          humid: Number(log.air_humidity || log.humidity || 0)
         };
 
-        if (selectedDeviceMac === 'ALL') {
-          return { ...base, [`${deviceName}_${activeTab}`]: base[activeTab] };
+        // สำหรับรายวัน (Day) ให้เพิ่มจุดใหม่ตลอดเพราะต้องการความละเอียดสูง
+        if (timeframe === 'day') {
+          if (!processedMap.has(key)) {
+            processedMap.set(key, { time: key, timestamp: date.getTime(), level: val.level, temp: val.temp, humid: val.humid });
+          }
+        } else {
+          // สำหรับช่วงอื่นๆ ให้หยอดลงใน Slot ที่เตรียมไว้
+          if (processedMap.has(key)) {
+            const entry = processedMap.get(key);
+            if (selectedDeviceMac === 'ALL') {
+              entry[`${deviceName}_${activeTab}`] = val[activeTab];
+            } else {
+              entry.level = val.level;
+              entry.temp = val.temp;
+              entry.humid = val.humid;
+            }
+          }
         }
-        return base;
-      })
-      .sort((a, b) => a.timestamp - b.timestamp);
-  }, [data, timeframe, selectedDeviceMac, devices, activeTab]);
+      });
+    }
+
+    return Array.from(processedMap.values()).sort((a: any, b: any) => a.timestamp - b.timestamp);
+  }, [data, timeframe, devices, selectedDeviceMac, activeTab]);
 
   const maxValue = useMemo(() => {
     let max = 10;
@@ -78,7 +117,7 @@ export default function WaterLevelChart({ data, isDark, devices, timeframe, sele
         ].map((tab) => (
           <button
             key={tab.id} onClick={() => setActiveTab(tab.id as any)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${activeTab === tab.id ? `${tab.color} text-white shadow-lg` : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tighter transition-all ${activeTab === tab.id ? `${tab.color} text-white shadow-lg` : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}
           >
             {tab.icon} {tab.label}
           </button>
@@ -95,13 +134,13 @@ export default function WaterLevelChart({ data, isDark, devices, timeframe, sele
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#334155' : '#e2e8f0'} />
-            <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 9}} minTickGap={50} />
+            <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 9}} minTickGap={30} />
             <YAxis domain={[0, maxValue]} axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
             <Tooltip contentStyle={{ borderRadius: '15px', border: 'none', background: isDark ? '#1e293b' : '#fff', fontSize: '12px' }} />
             
             {selectedDeviceMac === 'ALL' ? (
               devices.map((d, i) => (
-                <Line key={d.mac} type="monotone" name={d.name} dataKey={`${d.name}_${activeTab}`} stroke={["#10b981", "#3b82f6", "#f59e0b"][i % 3]} strokeWidth={2.5} dot={false} connectNulls />
+                <Area key={d.mac} type="monotone" name={d.name} dataKey={`${d.name}_${activeTab}`} stroke={["#10b981", "#3b82f6", "#f59e0b"][i % 3]} fillOpacity={0} strokeWidth={2.5} connectNulls />
               ))
             ) : (
               <Area type="monotone" name={activeTab} dataKey={activeTab} stroke={typeColors[activeTab].stroke} fill="url(#colorFill)" strokeWidth={3} dot={false} connectNulls />

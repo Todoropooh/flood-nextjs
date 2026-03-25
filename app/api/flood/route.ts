@@ -21,6 +21,9 @@ async function sendTelegramMessage(message: string) {
   } catch (e) { return "Error"; }
 }
 
+/**
+ * 📥 [GET] ดึงข้อมูลไปโชว์ที่ Dashboard
+ */
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
@@ -29,7 +32,7 @@ export async function GET(request: NextRequest) {
     const timeframe = searchParams.get('timeframe') || 'day';
 
     let startDate = new Date();
-    // 🌟 ปรับปรุงการคำนวณวันย้อนหลังให้แม่นยำ
+    // 🌟 คำนวณวันย้อนหลังให้ครอบคลุมตามปุ่มที่กด
     if (timeframe === 'day') startDate.setHours(startDate.getHours() - 24);
     else if (timeframe === 'week') startDate.setDate(startDate.getDate() - 7);
     else if (timeframe === 'month') startDate.setMonth(startDate.getMonth() - 1);
@@ -38,9 +41,11 @@ export async function GET(request: NextRequest) {
     let query: any = { createdAt: { $gte: startDate } };
     if (mac && mac !== "null" && mac !== "undefined") query.mac = mac;
 
-    // 🌟 เพิ่ม Limit เป็น 20,000 เพื่อให้ครอบคลุมข้อมูลรายสัปดาห์/เดือน
-    let logs = await WaterLog.find(query).sort({ createdAt: -1 }).limit(20000).lean();
-    logs = logs.reverse(); 
+    // 🌟 ขยาย Limit เป็น 50,000 และ sort จากเก่าไปใหม่ (1) เพื่อให้กราฟวาดได้ยาวต่อเนื่อง
+    let logs = await WaterLog.find(query)
+      .sort({ createdAt: 1 }) 
+      .limit(50000) 
+      .lean();
     
     return NextResponse.json(logs || []); 
   } catch (error: any) {
@@ -48,6 +53,9 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * 📤 [POST] รับข้อมูลจาก ESP32
+ */
 export async function POST(request: NextRequest) {
   try {
     const payload = await request.json(); 
@@ -67,6 +75,7 @@ export async function POST(request: NextRequest) {
     const status = wl >= (device.criticalThreshold || 10) ? "CRITICAL" : 
                    (wl >= (device.warningThreshold || 5) ? "WARNING" : "STABLE");
 
+    // 📝 อัปเดตข้อมูลล่าสุดลง Device
     await Device.findOneAndUpdate({ mac }, { 
       waterLevel: wl, 
       temperature: Number(temperature) || 0,
@@ -75,6 +84,7 @@ export async function POST(request: NextRequest) {
       status: status
     });
 
+    // 📝 บันทึกประวัติลง WaterLog
     await WaterLog.create({ 
       mac, level: wl, signal: Number(signal) || 0,
       temperature: Number(temperature) || 0,
@@ -82,6 +92,7 @@ export async function POST(request: NextRequest) {
       status: status 
     });
 
+    // 🔔 ส่งแจ้งเตือนผ่าน Telegram
     if (device.isActive && status !== "STABLE") {
       const alertStatus = status === "CRITICAL" ? "🚨 ระดับน้ำวิกฤต!" : "⚠️ เฝ้าระวังน้ำสูง!";
       const now = Date.now();
