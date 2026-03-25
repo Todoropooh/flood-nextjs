@@ -1,103 +1,192 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Waves, Loader2, UserPlus, ArrowLeft, Check, ShieldAlert } from 'lucide-react';
+import { useTheme } from 'next-themes';
+import { User, AlertCircle, ArrowRight, Sun, Moon, Type, Mail, Phone, Lock } from 'lucide-react';
 import Link from 'next/link';
 
 export default function RegisterPage() {
-  const [formData, setFormData] = useState({ 
-    username: '', 
-    password: '', 
-    firstname: '', 
-    lastname: '',
-    phone: '' 
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [firstname, setFirstname] = useState('');
+  const [lastname, setLastname] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  
+  const { setTheme, resolvedTheme } = useTheme();
   const router = useRouter();
 
-  const handleRegister = async (e: React.FormEvent) => {
+  useEffect(() => { setIsMounted(true); }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError("");
+    setIsLoading(true);
+    setError('');
 
     try {
       const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          ...formData, 
-          isApproved: false, // 🌟 ส่งไปเป็น false เพื่อให้ Admin กดยืนยันก่อน
-          role: 'user' 
-        })
+        body: JSON.stringify({ firstname, lastname, email, phone, username, password, role: 'user' }), 
       });
 
-      if (res.ok) {
-        alert("สมัครสมาชิกสำเร็จ! กรุณารอผู้ดูแลระบบ (Admin) อนุมัติการใช้งาน");
-        router.push('/'); // สมัครเสร็จส่งกลับไปหน้า Login
-      } else {
+      if (!res.ok) {
         const data = await res.json();
-        setError(data.error || "เกิดข้อผิดพลาดในการสมัคร");
+        throw new Error(data.message || 'Registration failed. Please try again.');
       }
-    } catch (err) {
-      setError("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้");
-    } finally {
-      setLoading(false);
+      router.push('/login');
+    } catch (err: any) {
+      setError(err.message);
+      setIsLoading(false);
     }
   };
 
+  if (!isMounted) return null;
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-[#020617] p-4 transition-colors duration-500">
-      <div className="w-full max-w-[450px] bg-white dark:bg-slate-900 p-10 rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.1)] border border-slate-100 dark:border-slate-800 relative overflow-hidden">
-        
-        {/* หัวข้อ */}
-        <div className="flex flex-col items-center mb-10">
-          <div className="p-4 bg-[#1155FA] rounded-[1.5rem] text-white shadow-lg shadow-blue-500/30 mb-5 animate-bounce-slow">
-            <Waves size={32} />
-          </div>
-          <h1 className="text-2xl font-black text-slate-800 dark:text-white uppercase tracking-tighter">Create Account</h1>
-          <p className="text-[11px] text-slate-400 font-bold mt-2 uppercase tracking-widest text-center px-4">
-            ลงทะเบียนเข้าใช้งานระบบเฝ้าระวังน้ำท่วม
-          </p>
-        </div>
-
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-2xl flex items-center gap-3 text-red-600 dark:text-red-400 text-xs font-bold">
-            <ShieldAlert size={16} /> {error}
-          </div>
-        )}
-
-        <form onSubmit={handleRegister} className="space-y-5">
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Identify</label>
-            <input required placeholder="Username" className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border dark:border-slate-800 outline-none font-bold text-sm focus:border-blue-500 transition-all dark:text-white" 
-              onChange={e => setFormData({...formData, username: e.target.value})} />
-            <input required type="password" placeholder="Password" className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border dark:border-slate-800 outline-none font-bold text-sm focus:border-blue-500 transition-all dark:text-white" 
-              onChange={e => setFormData({...formData, password: e.target.value})} />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Personal Info</label>
-            <div className="grid grid-cols-2 gap-3">
-              <input required placeholder="Firstname" className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border dark:border-slate-800 outline-none font-bold text-sm focus:border-blue-500 transition-all dark:text-white" 
-                onChange={e => setFormData({...formData, firstname: e.target.value})} />
-              <input required placeholder="Lastname" className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border dark:border-slate-800 outline-none font-bold text-sm focus:border-blue-500 transition-all dark:text-white" 
-                onChange={e => setFormData({...formData, lastname: e.target.value})} />
-            </div>
-            <input placeholder="Phone Number" className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border dark:border-slate-800 outline-none font-bold text-sm focus:border-blue-500 transition-all dark:text-white" 
-                onChange={e => setFormData({...formData, phone: e.target.value})} />
-          </div>
-
-          <button disabled={loading} className="w-full py-5 bg-[#1155FA] hover:bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl shadow-blue-500/25 active:scale-95 transition-all flex justify-center items-center gap-3">
-            {loading ? <Loader2 className="animate-spin" /> : <><UserPlus size={18}/> Register Now</>}
-          </button>
-        </form>
-
-        <Link href="/" className="flex items-center justify-center gap-2 mt-8 text-[10px] font-black text-slate-400 uppercase hover:text-blue-600 transition-colors tracking-widest">
-          <ArrowLeft size={14}/> Back to Sign In
-        </Link>
+    // 💡 เปลี่ยนกลับเป็น min-h-screen เผื่อจอเล็กจะได้ไม่บั๊ก และใส่ py-10 ให้มีขอบบนล่าง
+    <main className="min-h-screen w-full flex items-center justify-center relative font-sans overflow-y-auto py-10">
+      
+      {/* 🌌 Background */}
+      <div className="fixed inset-0 -z-10 bg-[#0f172a]">
+        <img 
+          src="https://images.pexels.com/photos/1295138/pexels-photo-1295138.jpeg" 
+          className="w-full h-full object-cover opacity-100"
+          alt="background"
+        />
+        <div className="absolute inset-0 bg-white/20 dark:bg-black/70 backdrop-blur-2xl transition-colors duration-500" />
       </div>
-    </div>
+
+      {/* 🌗 Theme Toggle */}
+      <div className="absolute top-6 right-6 z-50 fixed">
+        <div className="flex items-center bg-black/10 dark:bg-white/10 p-1 rounded-full backdrop-blur-md border border-white/20 dark:border-white/5">
+          <button onClick={() => setTheme('light')} className={`p-1.5 rounded-full transition-all duration-300 ${resolvedTheme === 'light' ? 'bg-white text-blue-500 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}><Sun size={12}/></button>
+          <button onClick={() => setTheme('dark')} className={`p-1.5 rounded-full transition-all duration-300 ${resolvedTheme === 'dark' ? 'bg-[#2C2C2E] text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}><Moon size={12}/></button>
+        </div>
+      </div>
+
+      {/* 💡 ใช้ max-w-lg (แคบลงมา) เพื่อให้ทรงการ์ดเป็นแนวตั้งสวยงาม ไม่ดูแบน */}
+      <div className="w-full max-w-lg relative z-10 px-4">
+        
+        <div className="bg-white/60 dark:bg-[#1C1C1E]/60 rounded-[2.5rem] shadow-2xl border border-white/50 dark:border-white/10 backdrop-blur-xl overflow-hidden transform transition-all">
+          
+          {/* Header */}
+          <div className="p-8 pb-4 text-center">
+            <div className="flex justify-center mb-4">
+              <div className="p-4 bg-indigo-600 rounded-3xl shadow-lg shadow-indigo-500/30">
+                <User size={28} className="text-white" />
+              </div>
+            </div>
+            <h1 className="text-2xl font-black uppercase tracking-widest text-slate-800 dark:text-white leading-none">
+              Create <span className="text-indigo-600 dark:text-indigo-400">Account</span>
+            </h1>
+            <p className="text-slate-500 dark:text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-2">
+              Personal Info & Identity
+            </p>
+          </div>
+
+          <div className="p-8 pt-2">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              
+              {error && (
+                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2 text-red-600 dark:text-red-400 text-xs font-bold uppercase tracking-wide">
+                  <AlertCircle size={16} className="shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {/* 🧑‍🤝‍🧑 First & Last Name (อยู่คู่กัน) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
+                    <Type size={16} />
+                  </div>
+                  <input type="text" required value={firstname} onChange={(e) => setFirstname(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3 bg-white/50 dark:bg-black/20 border border-white/50 dark:border-white/10 rounded-2xl text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all backdrop-blur-sm placeholder:text-slate-400/70"
+                    placeholder="First Name" />
+                </div>
+
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
+                    <Type size={16} />
+                  </div>
+                  <input type="text" value={lastname} onChange={(e) => setLastname(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3 bg-white/50 dark:bg-black/20 border border-white/50 dark:border-white/10 rounded-2xl text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all backdrop-blur-sm placeholder:text-slate-400/70"
+                    placeholder="Last Name" />
+                </div>
+              </div>
+
+              {/* 📧 Email & 📱 Phone (อยู่คู่กัน) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
+                    <Mail size={16} />
+                  </div>
+                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3 bg-white/50 dark:bg-black/20 border border-white/50 dark:border-white/10 rounded-2xl text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all backdrop-blur-sm placeholder:text-slate-400/70"
+                    placeholder="Email Address" />
+                </div>
+
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
+                    <Phone size={16} />
+                  </div>
+                  <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3 bg-white/50 dark:bg-black/20 border border-white/50 dark:border-white/10 rounded-2xl text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all backdrop-blur-sm placeholder:text-slate-400/70"
+                    placeholder="Phone Number" />
+                </div>
+              </div>
+
+              {/* 🔑 Username & Password (ยาวเต็มบรรทัด ให้อ่านง่ายขึ้น) */}
+              <div className="space-y-3 pt-2">
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
+                    <User size={16} />
+                  </div>
+                  <input type="text" required value={username} onChange={(e) => setUsername(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3 bg-white/50 dark:bg-black/20 border border-white/50 dark:border-white/10 rounded-2xl text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all backdrop-blur-sm placeholder:text-slate-400/70"
+                    placeholder="Create Username" />
+                </div>
+
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
+                    <Lock size={16} />
+                  </div>
+                  <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3 bg-white/50 dark:bg-black/20 border border-white/50 dark:border-white/10 rounded-2xl text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all backdrop-blur-sm placeholder:text-slate-400/70"
+                    placeholder="Create Password" />
+                </div>
+              </div>
+
+              {/* Submit Button */}
+              <button type="submit" disabled={isLoading}
+                className="w-full mt-4 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-500/30 active:scale-95 flex justify-center items-center gap-2 disabled:opacity-70"
+              >
+                {isLoading ? (
+                  <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                ) : (
+                  <>Create Account <ArrowRight size={16} /></>
+                )}
+              </button>
+            </form>
+
+            <div className="mt-6 pt-6 border-t border-slate-200/50 dark:border-slate-700/50 text-center">
+              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+                Already have an account?{' '}
+                <Link href="/login" className="text-indigo-600 dark:text-indigo-400 font-black hover:underline transition-all ml-1">
+                  Sign In
+                </Link>
+              </p>
+            </div>
+            
+          </div>
+        </div>
+      </div>
+    </main>
   );
 }

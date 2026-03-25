@@ -146,6 +146,17 @@ export default function LoginPage() {
                 )}
               </button>
             </form>
+
+            {/* 🌟 ส่วนที่เพิ่มเข้ามาใหม่: ลิงก์ไปหน้าสมัครสมาชิก */}
+            <div className="mt-6 pt-6 border-t border-slate-200/50 dark:border-slate-700/50 text-center">
+              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+                Don't have an account?{' '}
+                <Link href="/register" className="text-blue-600 dark:text-blue-400 font-black hover:underline transition-all ml-1">
+                  Create Account
+                </Link>
+              </p>
+            </div>
+            
           </div>
         </div>
 

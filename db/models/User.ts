@@ -8,7 +8,8 @@ export interface IUser extends Document {
   lastname: string;
   role: 'admin' | 'user';
   phone?: string;
-  image?: string; // 🌟 เพิ่มตรงนี้: รองรับการเก็บรูปภาพโปรไฟล์ (Base64)
+  image?: string;
+  isApproved: boolean; // 🌟 1. เพิ่มตรงนี้: เพื่อให้ TypeScript รู้จัก
   created_at: Date;
 }
 
@@ -19,7 +20,8 @@ const UserSchema: Schema = new Schema({
   lastname: { type: String, required: true },
   role: { type: String, enum: ['admin', 'user'], default: 'user' },
   phone: { type: String },
-  image: { type: String, default: '' }, // 🌟 เพิ่มตรงนี้: บอกฐานข้อมูลให้เตรียมพื้นที่เก็บรูป
+  image: { type: String, default: '' }, 
+  isApproved: { type: Boolean, default: false }, // 🌟 2. เพิ่มตรงนี้: บอกฐานข้อมูลให้เก็บสถานะการอนุมัติ (ค่าเริ่มต้นคือ false)
   created_at: { type: Date, default: Date.now }
 });
 

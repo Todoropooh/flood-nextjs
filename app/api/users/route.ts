@@ -3,6 +3,9 @@ import connectDB from "@/db/connect";
 import User from "@/db/models/User";
 import * as bcrypt from "bcryptjs";
 
+// 🌟 เพิ่มบรรทัดนี้: บังคับให้ Next.js ดึงข้อมูลสดใหม่เสมอ (ห้าม Cache)
+export const dynamic = 'force-dynamic';
+
 // ดึงข้อมูล User ทั้งหมด
 export async function GET() {
   try {
@@ -20,7 +23,7 @@ export async function POST(req: Request) {
     await connectDB();
     const body = await req.json();
     
-    // 🌟 เพิ่มตัวแปร image เข้ามารับค่า
+    // รับค่า image มาด้วย
     const { username, password, firstname, lastname, role, phone, image } = body;
 
     if (!username || !password || !firstname || !lastname) {
@@ -41,7 +44,8 @@ export async function POST(req: Request) {
       lastname,
       role: role || "user",
       phone: phone || "",
-      image: image || "", // 🌟 สั่งให้บันทึกรูปลง Database
+      image: image || "", // บันทึกรูป
+      // 💡 ระบบจะใช้ค่า default `isApproved: false` จาก Schema ที่เราแก้ไปเมื่อกี้อัตโนมัติ
     });
 
     return NextResponse.json({ success: true, user: newUser }, { status: 201 });
@@ -57,7 +61,6 @@ export async function PUT(req: Request) {
     await connectDB();
     const body = await req.json();
     
-    // 🌟 เพิ่มตัวแปร image เข้ามารับค่า
     const { _id, username, password, firstname, lastname, role, phone, image } = body;
 
     if (!_id) return NextResponse.json({ error: "User ID is required" }, { status: 400 });
@@ -68,7 +71,7 @@ export async function PUT(req: Request) {
       lastname,
       role,
       phone,
-      image, // 🌟 สั่งให้อัปเดตรูปลง Database
+      image, // อัปเดตรูป
     };
 
     if (password) {

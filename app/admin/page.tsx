@@ -133,41 +133,28 @@ export default function AdminPage() {
     if (res.ok) fetchData();
   };
 
-  /**
-   * แก้ไขฟังก์ชัน Approve 
-   * ใช้ PATCH เพื่ออัปเดตสถานะ และจัดการ Error 405
-   */
   const handleApproveUser = async (id: string, approve: boolean) => {
     const msg = approve ? "ยืนยันการอนุมัติสมาชิก?" : "ยืนยันการปฏิเสธสมาชิก (ลบข้อมูล)?";
     if(!confirm(msg)) return;
     
     setIsSaving(true);
     try {
-      if (approve) {
-        // กรณีอนุมัติ: ส่ง PATCH ไปที่ endpoint approve
-        const res = await fetch(`/api/users/${id}/approve`, { 
-          method: 'PATCH', // เปลี่ยนเป็น PATCH เพื่อให้ตรงกับมาตรฐานการอัปเดตข้อมูล
-          headers: { 'Content-Type': 'application/json' }
-        });
-        
-        if (res.ok) {
-          alert("อนุมัติสำเร็จ ✅");
-          fetchData();
-        } else {
-          const err = await res.json();
-          alert(`ผิดพลาด: ${err.message || 'ไม่สามารถอนุมัติได้'}`);
-        }
-      } else {
-        // กรณีปฏิเสธ: ลบข้อมูลผู้ใช้ทิ้ง
-        const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' });
-        if (res.ok) {
-          alert("ปฏิเสธและลบข้อมูลสำเร็จ ❌");
-          fetchData();
-        }
+      const res = await fetch(`/api/users/${id}/approve`, { 
+        method: approve ? 'PUT' : 'DELETE', 
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!res.ok) {
+        throw new Error(`เซิร์ฟเวอร์ตอบกลับรหัส: ${res.status}`);
       }
-    } catch (error) {
-      console.error(error);
-      alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+      
+      const data = await res.json();
+      alert(data.message || (approve ? "อนุมัติสำเร็จ ✅" : "ปฏิเสธและลบข้อมูลสำเร็จ ❌"));
+      await fetchData();
+
+    } catch (error: any) {
+      console.error("Fetch Error:", error);
+      alert(`เกิดข้อผิดพลาด: ${error.message}`);
     } finally {
       setIsSaving(false);
     }
@@ -239,71 +226,110 @@ export default function AdminPage() {
     setIsExporting(false);
   };
 
-  if (!isMounted || status === 'loading') return <div className="min-h-screen bg-slate-100 dark:bg-[#020617] flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" size={40} /></div>;
+  // 🌟 Glass Loading Screen
+  if (!isMounted || status === 'loading') return (
+    <div className="flex h-screen items-center justify-center relative overflow-hidden">
+      <div className="fixed inset-0 -z-10 bg-[#0f172a]">
+        <img src="https://images.pexels.com/photos/1295138/pexels-photo-1295138.jpeg" className="w-full h-full object-cover opacity-100" alt="background" />
+        <div className="absolute inset-0 bg-white/20 dark:bg-black/70 backdrop-blur-2xl transition-colors duration-500" />
+      </div>
+      <Loader2 className="animate-spin text-white drop-shadow-lg" size={40} />
+    </div>
+  );
 
   const pendingUsers = users.filter(u => !u.isApproved);
   const activeUsers = users.filter(u => u.isApproved && u.username !== (session?.user as any)?.username);
+  const isDark = resolvedTheme === 'dark';
 
   return (
-    <main className="min-h-screen bg-slate-100 dark:bg-[#020617] text-slate-800 dark:text-slate-100 transition-colors duration-500 pb-24">
+    <main className="min-h-screen font-sans pb-24 md:pb-10 relative overflow-hidden transition-colors duration-300">
       
-      {/* 🔝 Navbar */}
-      <header className={`sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b dark:border-slate-800 transition-all ${showUI ? 'translate-y-0' : '-translate-y-full'}`}>
+      {/* 🌌 Background แบบ Glassmorphism */}
+      <div className="fixed inset-0 -z-10 bg-[#0f172a]">
+        <img 
+          src="https://images.pexels.com/photos/1295138/pexels-photo-1295138.jpeg" 
+          className="w-full h-full object-cover opacity-100"
+          alt="background"
+        />
+        <div className="absolute inset-0 bg-slate-100/50 dark:bg-black/70 backdrop-blur-[40px] transition-colors duration-500" />
+      </div>
+
+      {/* 🔝 Navbar (Glass) */}
+      <header className={`sticky top-0 z-40 bg-white/40 dark:bg-black/40 backdrop-blur-2xl border-b border-white/30 dark:border-white/10 transition-all shadow-sm ${showUI ? 'translate-y-0' : '-translate-y-full'}`}>
         <div className="max-w-6xl mx-auto px-6 py-4 flex flex-col md:flex-row gap-4 justify-between items-center">
           <div className="flex items-center gap-4">
-            <Link href="/" className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg"><ArrowLeft size={16} /></Link>
-            <h1 className="text-sm font-black uppercase flex items-center gap-2"><ShieldCheck size={18} className="text-blue-600" /> Admin Portal</h1>
+            <Link href="/" className="p-2 bg-white/50 dark:bg-black/50 hover:bg-white/80 dark:hover:bg-black/80 rounded-xl transition-all shadow-sm border border-white/20 dark:border-white/5 backdrop-blur-md">
+              <ArrowLeft size={16} className={isDark ? 'text-white' : 'text-slate-800'} />
+            </Link>
+            <h1 className="text-sm font-black uppercase flex items-center gap-2 drop-shadow-sm text-slate-800 dark:text-white">
+              <ShieldCheck size={18} className="text-blue-600 dark:text-blue-400" /> Admin Portal
+            </h1>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex p-1 bg-slate-100 dark:bg-slate-950 rounded-xl border dark:border-slate-800">
+            {/* Tabs */}
+            <div className="flex p-1 bg-white/40 dark:bg-black/40 rounded-xl border border-white/30 dark:border-white/10 backdrop-blur-md shadow-inner">
               {(['nodes', 'users', 'system'] as const).map(tab => (
-                <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${activeTab === tab ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-slate-400'}`}>{tab}</button>
+                <button key={tab} onClick={() => setActiveTab(tab)} 
+                  className={`px-5 py-2 rounded-lg text-[10px] font-black uppercase transition-all 
+                  ${activeTab === tab 
+                    ? (isDark ? 'bg-blue-600/80 text-white shadow-md border border-white/10' : 'bg-white shadow-md text-blue-600') 
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>
+                  {tab}
+                </button>
               ))}
             </div>
-            <button onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')} className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800">{resolvedTheme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}</button>
-            <button onClick={() => signOut({ callbackUrl: '/' })} className="px-4 py-2.5 bg-red-50 dark:bg-red-500/10 text-red-600 rounded-xl text-[10px] font-black uppercase">Logout</button>
+            {/* Theme Toggle */}
+            <button onClick={() => setTheme(isDark ? 'light' : 'dark')} className="p-2.5 rounded-xl bg-white/40 dark:bg-black/40 border border-white/30 dark:border-white/10 backdrop-blur-md hover:bg-white/60 dark:hover:bg-white/10 transition-all text-slate-700 dark:text-slate-300">
+              {isDark ? <Sun size={16}/> : <Moon size={16}/>}
+            </button>
+            {/* Logout */}
+            <button onClick={() => signOut({ callbackUrl: '/' })} className="px-4 py-2.5 bg-red-500/20 dark:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 rounded-xl text-[10px] font-black uppercase hover:bg-red-500/30 transition-all backdrop-blur-md shadow-sm">
+              Logout
+            </button>
           </div>
         </div>
       </header>
 
       {/* 📊 Content */}
-      <div className="max-w-6xl mx-auto p-4 md:px-6 mt-8">
+      <div className="max-w-6xl mx-auto p-4 md:px-6 mt-8 relative z-10">
         
-        {/* Actions Bar */}
-        <div className="flex flex-col sm:flex-row gap-3 mb-6 justify-between items-center bg-white dark:bg-slate-900 p-4 rounded-3xl border dark:border-slate-800 shadow-sm">
-            <div className="relative w-full sm:w-64">
-               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-               <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-950 border dark:border-slate-800 rounded-xl text-xs font-bold outline-none" />
+        {/* Actions Bar (Glass) */}
+        <div className={`flex flex-col sm:flex-row gap-3 mb-6 justify-between items-center p-4 rounded-3xl shadow-lg backdrop-blur-xl transition-all ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
+            <div className="relative w-full sm:w-64 group">
+               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-blue-500 transition-colors" size={16} />
+               <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} 
+                 className={`w-full pl-10 pr-4 py-2.5 rounded-xl text-xs font-bold outline-none transition-all backdrop-blur-sm placeholder:text-slate-500 ${isDark ? 'bg-black/40 border-white/10 text-white focus:bg-black/60 focus:border-blue-500/50 border' : 'bg-white/50 border-white/40 text-slate-800 focus:bg-white border focus:border-blue-400'}`} />
             </div>
             <div className="flex gap-2 w-full sm:w-auto">
-               <button onClick={() => openModal('export')} className="p-2.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-xl border dark:border-slate-800"><FileText size={18} /></button>
+               <button onClick={() => openModal('export')} className="p-2.5 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl border border-emerald-500/30 hover:bg-emerald-500/30 transition-all backdrop-blur-md"><FileText size={18} /></button>
                {activeTab !== 'system' && (
-                 <button onClick={() => openModal(activeTab === 'nodes' ? 'add' : 'user')} className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-2 shadow-lg shadow-blue-500/20"><Plus size={16}/> Add New</button>
+                 <button onClick={() => openModal(activeTab === 'nodes' ? 'add' : 'user')} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-2 shadow-lg shadow-blue-500/30 transition-all active:scale-95 border border-white/10"><Plus size={16}/> Add New</button>
                )}
             </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-[2.5rem] shadow-xl overflow-hidden">
+        {/* Main Glass Card Container */}
+        <div className={`rounded-[2.5rem] shadow-2xl overflow-hidden backdrop-blur-xl transition-all ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
           
           {/* Nodes Tab */}
           {activeTab === 'nodes' && (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 dark:bg-slate-950 text-[10px] font-black uppercase text-slate-400">
+                <thead className={`text-[10px] font-black uppercase backdrop-blur-md ${isDark ? 'bg-black/40 text-slate-400 border-b border-white/5' : 'bg-white/40 text-slate-500 border-b border-white/20'}`}>
                   <tr><th className="px-8 py-5">Node Info</th><th className="px-8 py-5">Settings</th><th className="px-8 py-5 text-right">Action</th></tr>
                 </thead>
-                <tbody className="divide-y dark:divide-slate-800/50">
+                <tbody className={`divide-y ${isDark ? 'divide-white/5' : 'divide-white/20'}`}>
                   {devices.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase())).map(device => (
-                    <tr key={device._id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                    <tr key={device._id} className={`transition-colors ${isDark ? 'hover:bg-white/5 text-slate-200' : 'hover:bg-white/40 text-slate-700'}`}>
                       <td className="px-8 py-5 flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-950 flex items-center justify-center relative border dark:border-slate-800">
-                          {device.image ? <img src={device.image} className="w-full h-full object-cover rounded-2xl" /> : <Cpu size={20} />}
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center relative border backdrop-blur-sm shadow-sm ${isDark ? 'bg-black/40 border-white/10' : 'bg-white/50 border-white/40'}`}>
+                          {device.image ? <img src={device.image} className="w-full h-full object-cover rounded-2xl" /> : <Cpu size={20} className={isDark ? 'text-slate-400' : 'text-blue-500'}/>}
                         </div>
-                        <div><div className="font-black">{device.name}</div><div className="text-[10px] font-mono text-slate-400">{device.mac}</div></div>
+                        <div><div className="font-black drop-shadow-sm">{device.name}</div><div className="text-[10px] font-mono opacity-60">{device.mac}</div></div>
                       </td>
-                      <td className="px-8 py-5 font-bold text-xs">H: {device.installHeight}m | <span className="text-red-500">Crit: {device.criticalThreshold}m</span></td>
+                      <td className="px-8 py-5 font-bold text-xs">H: {device.installHeight}m | <span className="text-red-500 dark:text-red-400">Crit: {device.criticalThreshold}m</span></td>
                       <td className="px-8 py-5 text-right">
-                        <button onClick={() => { setEditingId(device._id); openModal('add'); }} className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-xl"><Edit2 size={14} /></button>
+                        <button onClick={() => { setEditingId(device._id); openModal('add'); }} className={`p-2.5 rounded-xl transition-colors shadow-sm backdrop-blur-md ${isDark ? 'bg-black/40 hover:bg-white/10 text-slate-300' : 'bg-white/60 hover:bg-white border border-white/40 text-slate-600'}`}><Edit2 size={14} /></button>
                       </td>
                     </tr>
                   ))}
@@ -314,30 +340,18 @@ export default function AdminPage() {
 
           {/* Users Tab */}
           {activeTab === 'users' && (
-            <div className="p-2 space-y-6">
-              {/* Approval Section */}
+            <div className="flex flex-col h-full">
+              {/* Approval Section (Glass Warning Style) */}
               {pendingUsers.length > 0 && (
                 <div className="p-6">
-                  <h3 className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-4 flex items-center gap-2">Pending Approval ({pendingUsers.length})</h3>
+                  <h3 className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-4 flex items-center gap-2 drop-shadow-sm">Pending Approval ({pendingUsers.length})</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {pendingUsers.map(u => (
-                      <div key={u._id} className="p-5 bg-amber-50 dark:bg-amber-500/5 border border-amber-100 dark:border-amber-500/20 rounded-[2rem] flex items-center justify-between">
-                        <div className="font-black text-sm">{u.firstname} {u.lastname} <span className="block text-[10px] font-normal text-slate-500">@{u.username}</span></div>
+                      <div key={u._id} className="p-5 bg-amber-500/10 border border-amber-500/30 backdrop-blur-md rounded-[2rem] flex items-center justify-between shadow-sm">
+                        <div className={`font-black text-sm drop-shadow-sm ${isDark ? 'text-white' : 'text-slate-800'}`}>{u.firstname} {u.lastname} <span className="block text-[10px] font-normal opacity-70">@{u.username}</span></div>
                         <div className="flex gap-2">
-                          <button 
-                            onClick={() => handleApproveUser(u._id, true)} 
-                            disabled={isSaving}
-                            className="p-2 bg-emerald-500 text-white rounded-full hover:scale-110 transition-transform disabled:opacity-50"
-                          >
-                            <CheckCircle2 size={18}/>
-                          </button>
-                          <button 
-                            onClick={() => handleApproveUser(u._id, false)} 
-                            disabled={isSaving}
-                            className="p-2 bg-red-500 text-white rounded-full hover:scale-110 transition-transform disabled:opacity-50"
-                          >
-                            <XCircle size={18}/>
-                          </button>
+                          <button onClick={() => handleApproveUser(u._id, true)} disabled={isSaving} className="p-2.5 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl shadow-lg shadow-emerald-500/20 transition-all hover:-translate-y-1 disabled:opacity-50"><CheckCircle2 size={18}/></button>
+                          <button onClick={() => handleApproveUser(u._id, false)} disabled={isSaving} className="p-2.5 bg-red-500 hover:bg-red-400 text-white rounded-xl shadow-lg shadow-red-500/20 transition-all hover:-translate-y-1 disabled:opacity-50"><XCircle size={18}/></button>
                         </div>
                       </div>
                     ))}
@@ -345,73 +359,80 @@ export default function AdminPage() {
                 </div>
               )}
               {/* Active Users Table */}
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 dark:bg-slate-950 text-[10px] font-black uppercase text-slate-400">
-                  <tr><th className="px-8 py-5">User</th><th className="px-8 py-5">Role</th><th className="px-8 py-5 text-right">Action</th></tr>
-                </thead>
-                <tbody className="divide-y dark:divide-slate-800/50">
-                  {activeUsers.map(user => (
-                    <tr key={user._id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                      <td className="px-8 py-5 flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800">
-                          {user.image ? <img src={user.image} className="w-full h-full object-cover" /> : <Users size={18} className="m-auto mt-2 text-slate-400" />}
-                        </div>
-                        <div><div className="font-black">{user.firstname} {user.lastname}</div><div className="text-[10px] text-slate-400">@{user.username}</div></div>
-                      </td>
-                      <td className="px-8 py-5"><span className="px-3 py-1 rounded-lg text-[9px] font-black uppercase bg-blue-100 text-blue-600 dark:bg-blue-500/10">{user.role}</span></td>
-                      <td className="px-8 py-5 text-right space-x-2">
-                        <button onClick={() => { setEditingId(user._id); setUserFormData({...user, password: ''}); openModal('user'); }} className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-xl"><Edit2 size={14} /></button>
-                        <button onClick={() => handleDeleteUser(user._id)} className="p-2.5 bg-red-50 dark:bg-red-500/10 text-red-500 rounded-xl"><Trash2 size={14} /></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto border-t border-white/20 dark:border-white/5">
+                <table className="w-full text-left text-sm">
+                  <thead className={`text-[10px] font-black uppercase backdrop-blur-md ${isDark ? 'bg-black/40 text-slate-400 border-b border-white/5' : 'bg-white/40 text-slate-500 border-b border-white/20'}`}>
+                    <tr><th className="px-8 py-5">User</th><th className="px-8 py-5">Role</th><th className="px-8 py-5 text-right">Action</th></tr>
+                  </thead>
+                  <tbody className={`divide-y ${isDark ? 'divide-white/5' : 'divide-white/20'}`}>
+                    {activeUsers.map(user => (
+                      <tr key={user._id} className={`transition-colors ${isDark ? 'hover:bg-white/5 text-slate-200' : 'hover:bg-white/40 text-slate-700'}`}>
+                        <td className="px-8 py-5 flex items-center gap-4">
+                          <div className={`w-10 h-10 rounded-full overflow-hidden flex items-center justify-center border shadow-sm backdrop-blur-sm ${isDark ? 'bg-black/40 border-white/10' : 'bg-white/50 border-white/40'}`}>
+                            {user.image ? <img src={user.image} className="w-full h-full object-cover" /> : <Users size={18} className="text-slate-400" />}
+                          </div>
+                          <div><div className="font-black drop-shadow-sm">{user.firstname} {user.lastname}</div><div className="text-[10px] opacity-60">@{user.username}</div></div>
+                        </td>
+                        <td className="px-8 py-5"><span className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/20 backdrop-blur-sm">{user.role}</span></td>
+                        <td className="px-8 py-5 text-right space-x-2">
+                          <button onClick={() => { setEditingId(user._id); setUserFormData({...user, password: ''}); openModal('user'); }} className={`p-2.5 rounded-xl transition-colors shadow-sm backdrop-blur-md ${isDark ? 'bg-black/40 hover:bg-white/10 text-slate-300' : 'bg-white/60 hover:bg-white border border-white/40 text-slate-600'}`}><Edit2 size={14} /></button>
+                          <button onClick={() => handleDeleteUser(user._id)} className="p-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-600 dark:text-red-400 rounded-xl border border-red-500/20 backdrop-blur-md transition-colors"><Trash2 size={14} /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
-          {/* System Tab */}
+          {/* System Tab (Glass Inner Cards) */}
           {activeTab === 'system' && (
             <div className="p-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="bg-slate-50 dark:bg-slate-950 p-8 rounded-[2.5rem] border dark:border-slate-800 space-y-6">
-                  <div className="flex items-center gap-3"><Bell size={20} className="text-blue-600"/><h3 className="font-black text-lg">Telegram Notifications</h3></div>
+                {/* Notification Card */}
+                <div className={`p-8 rounded-[2.5rem] shadow-lg backdrop-blur-md border ${isDark ? 'bg-black/20 border-white/10' : 'bg-white/40 border-white/50'}`}>
+                  <div className="flex items-center gap-3 mb-6"><Bell size={20} className="text-blue-600 dark:text-blue-400 drop-shadow-sm"/><h3 className={`font-black text-lg drop-shadow-sm ${isDark ? 'text-white':'text-slate-800'}`}>Telegram Notifications</h3></div>
                   <div className="space-y-4">
-                    <input type="text" placeholder="Bot API Token" value={botToken} onChange={e => setBotToken(e.target.value)} className="w-full px-5 py-3.5 bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-2xl text-xs font-bold outline-none" />
-                    <input type="text" placeholder="Chat ID" value={chatId} onChange={e => setChatId(e.target.value)} className="w-full px-5 py-3.5 bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-2xl text-xs font-bold outline-none" />
-                    <button onClick={handleTestTelegram} disabled={isSaving} className="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-emerald-500/20">Test Connection</button>
+                    <input type="text" placeholder="Bot API Token" value={botToken} onChange={e => setBotToken(e.target.value)} 
+                      className={`w-full px-5 py-3.5 rounded-2xl text-xs font-bold outline-none backdrop-blur-sm transition-all ${isDark ? 'bg-black/40 border border-white/10 text-white focus:border-blue-500/50' : 'bg-white/60 border border-white/40 text-slate-800 focus:border-blue-400'}`} />
+                    <input type="text" placeholder="Chat ID" value={chatId} onChange={e => setChatId(e.target.value)} 
+                      className={`w-full px-5 py-3.5 rounded-2xl text-xs font-bold outline-none backdrop-blur-sm transition-all ${isDark ? 'bg-black/40 border border-white/10 text-white focus:border-blue-500/50' : 'bg-white/60 border border-white/40 text-slate-800 focus:border-blue-400'}`} />
+                    <button onClick={handleTestTelegram} disabled={isSaving} className="w-full py-4 mt-2 bg-emerald-500/90 hover:bg-emerald-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-emerald-500/20 border border-white/10 backdrop-blur-md transition-all active:scale-95">Test Connection</button>
                   </div>
                 </div>
-                <div className="bg-slate-50 dark:bg-slate-950 p-8 rounded-[2.5rem] border dark:border-slate-800 flex flex-col items-center justify-center gap-6 text-center">
-                   <div className="relative group cursor-pointer rounded-3xl overflow-hidden shadow-xl border-4 border-white dark:border-slate-800">
+                {/* QR Code Card */}
+                <div className={`p-8 rounded-[2.5rem] shadow-lg backdrop-blur-md border flex flex-col items-center justify-center gap-6 text-center ${isDark ? 'bg-black/20 border-white/10' : 'bg-white/40 border-white/50'}`}>
+                   <div className="relative group cursor-pointer rounded-3xl overflow-hidden shadow-2xl border-4 border-white/50 dark:border-white/10 backdrop-blur-md">
                       <img src={qrImage} alt="QR" className="w-48 h-48 object-cover" />
-                      <label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-all cursor-pointer"><ImageIcon size={24} /><span className="text-[10px] font-black uppercase mt-2">Change Image</span><input type="file" accept="image/*" className="hidden" onChange={handleQRUpload} /></label>
+                      <label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-all cursor-pointer backdrop-blur-sm"><ImageIcon size={24} /><span className="text-[10px] font-black uppercase mt-2">Change Image</span><input type="file" accept="image/*" className="hidden" onChange={handleQRUpload} /></label>
                    </div>
-                   <h4 className="font-black text-xs uppercase text-slate-800 dark:text-white">Subscriber QR Code</h4>
+                   <h4 className="font-black text-xs uppercase text-slate-800 dark:text-slate-200 drop-shadow-sm">Subscriber QR Code</h4>
                 </div>
               </div>
-              <button onClick={handleSaveSystemSettings} disabled={isSaving} className="w-full bg-[#1155FA] text-white py-5 rounded-3xl font-black uppercase tracking-widest shadow-xl shadow-blue-500/25 transition-all active:scale-95 flex items-center justify-center gap-3">{isSaving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={20}/> Update System Config</>}</button>
+              <button onClick={handleSaveSystemSettings} disabled={isSaving} className="w-full bg-[#1155FA]/90 hover:bg-[#1155FA] text-white py-5 rounded-3xl font-black uppercase tracking-widest shadow-xl shadow-blue-500/25 border border-white/10 backdrop-blur-md transition-all active:scale-95 flex items-center justify-center gap-3">{isSaving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={20}/> Update System Config</>}</button>
             </div>
           )}
         </div>
       </div>
 
-      {/* Export Modal */}
+      {/* Export Modal (Glass) */}
       {modalState.export && (
-        <div className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 transition-all ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
-          <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl w-full max-w-sm p-8 text-center space-y-6">
-              <FileText size={48} className="mx-auto text-blue-600"/>
-              <h3 className="font-black text-lg">Generate Report</h3>
-              <select value={exportDays} onChange={e => setExportDays(Number(e.target.value))} className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border dark:border-slate-800 outline-none font-black text-sm text-center">
-                <option value={1}>Last 24 Hours</option><option value={7}>Last 7 Days</option><option value={30}>Last 30 Days</option>
+        <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4 transition-all ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
+          <div className={`rounded-[2.5rem] shadow-2xl w-full max-w-sm p-8 text-center space-y-6 border backdrop-blur-xl ${isDark ? 'bg-[#1C1C1E]/80 border-white/10' : 'bg-white/80 border-white/50'}`}>
+              <div className="p-4 bg-blue-500/10 rounded-full w-20 h-20 mx-auto flex items-center justify-center border border-blue-500/20 backdrop-blur-md"><FileText size={36} className="text-blue-600 dark:text-blue-400"/></div>
+              <h3 className={`font-black text-xl drop-shadow-sm ${isDark ? 'text-white':'text-slate-800'}`}>Generate Report</h3>
+              <select value={exportDays} onChange={e => setExportDays(Number(e.target.value))} 
+                className={`w-full p-4 rounded-2xl outline-none font-black text-sm text-center backdrop-blur-sm cursor-pointer transition-colors ${isDark ? 'bg-black/40 border border-white/10 text-white' : 'bg-white/60 border border-white/40 text-slate-800'}`}>
+                <option value={1} className="text-black">Last 24 Hours</option><option value={7} className="text-black">Last 7 Days</option><option value={30} className="text-black">Last 30 Days</option>
               </select>
-              <button onClick={executeExportPDF} disabled={isExporting} className="w-full py-4 bg-emerald-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-lg flex items-center justify-center gap-2">{isExporting ? <Loader2 className="animate-spin" size={20} /> : 'Download PDF'}</button>
-              <button onClick={closeModal} className="text-[10px] font-black text-slate-400 uppercase hover:text-red-500 transition-colors">Close Window</button>
+              <button onClick={executeExportPDF} disabled={isExporting} className="w-full py-4 bg-emerald-500/90 hover:bg-emerald-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 border border-white/10 backdrop-blur-md transition-all active:scale-95">{isExporting ? <Loader2 className="animate-spin" size={20} /> : 'Download PDF'}</button>
+              <button onClick={closeModal} className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase hover:text-red-500 dark:hover:text-red-400 transition-colors">Close Window</button>
           </div>
         </div>
       )}
 
-      {/* NodeModal */}
+      {/* NodeModal (จะถูกครอบทับใน Component ของมันเอง ถ้าให้ดีอาจต้องไปแก้ UI ใน NodeModal ด้วยครับ) */}
       <NodeModal isOpen={modalState.add} modalAnim={modalAnim} editingId={editingId} initialData={editingId ? devices.find(d => d._id === editingId) : {}} onClose={closeModal} onSubmit={handleDeviceSubmit} isSaving={isSaving} />
 
       {/* Hidden PDF Chart */}
