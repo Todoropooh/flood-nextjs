@@ -22,7 +22,7 @@ async function sendTelegramMessage(message: string) {
 }
 
 /**
- * 📥 [GET] ดึงข้อมูลไปโชว์ที่ Dashboard
+ * 📥 [GET] ดึงข้อมูลย้อนหลังตาม Timeframe
  */
 export async function GET(request: NextRequest) {
   try {
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     const timeframe = searchParams.get('timeframe') || 'day';
 
     let startDate = new Date();
-    // 🌟 คำนวณวันย้อนหลังให้ครอบคลุมตามปุ่มที่กด
+    // 🌟 ตั้งค่าถอยหลังให้ชัดเจนตามปุ่มที่กด
     if (timeframe === 'day') startDate.setHours(startDate.getHours() - 24);
     else if (timeframe === 'week') startDate.setDate(startDate.getDate() - 7);
     else if (timeframe === 'month') startDate.setMonth(startDate.getMonth() - 1);
@@ -41,11 +41,9 @@ export async function GET(request: NextRequest) {
     let query: any = { createdAt: { $gte: startDate } };
     if (mac && mac !== "null" && mac !== "undefined") query.mac = mac;
 
-    // 🌟 ขยาย Limit เป็น 50,000 และ sort จากเก่าไปใหม่ (1) เพื่อให้กราฟวาดได้ยาวต่อเนื่อง
-    let logs = await WaterLog.find(query)
-      .sort({ createdAt: 1 }) 
-      .limit(50000) 
-      .lean();
+    // 🌟 ดึงข้อมูลทั้งหมดในช่วงนั้น (ไม่จำกัด limit เพื่อให้ข้อมูลเดือน/ปีมาครบ)
+    // เรียงจากเก่าไปใหม่ (1) เพื่อให้หน้าบ้านวาดกราฟได้เลย
+    let logs = await WaterLog.find(query).sort({ createdAt: 1 }).lean();
     
     return NextResponse.json(logs || []); 
   } catch (error: any) {
@@ -75,7 +73,7 @@ export async function POST(request: NextRequest) {
     const status = wl >= (device.criticalThreshold || 10) ? "CRITICAL" : 
                    (wl >= (device.warningThreshold || 5) ? "WARNING" : "STABLE");
 
-    // 📝 อัปเดตข้อมูลล่าสุดลง Device
+    // อัปเดตสถานะล่าสุดใน Device
     await Device.findOneAndUpdate({ mac }, { 
       waterLevel: wl, 
       temperature: Number(temperature) || 0,
@@ -84,7 +82,7 @@ export async function POST(request: NextRequest) {
       status: status
     });
 
-    // 📝 บันทึกประวัติลง WaterLog
+    // บันทึก Log ประวัติ
     await WaterLog.create({ 
       mac, level: wl, signal: Number(signal) || 0,
       temperature: Number(temperature) || 0,
@@ -92,7 +90,7 @@ export async function POST(request: NextRequest) {
       status: status 
     });
 
-    // 🔔 ส่งแจ้งเตือนผ่าน Telegram
+    // แจ้งเตือน Telegram
     if (device.isActive && status !== "STABLE") {
       const alertStatus = status === "CRITICAL" ? "🚨 ระดับน้ำวิกฤต!" : "⚠️ เฝ้าระวังน้ำสูง!";
       const now = Date.now();

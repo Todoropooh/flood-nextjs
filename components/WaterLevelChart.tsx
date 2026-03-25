@@ -22,50 +22,39 @@ export default function WaterLevelChart({ data, isDark, devices, timeframe, sele
   };
 
   const chartData = useMemo(() => {
-    const processedMap = new Map();
+    const timelineMap = new Map();
     const now = new Date();
-    
-    // 🌟 1. สร้างแกนเวลาเปล่าตามช่วงเวลา (เพื่อให้กราฟย้อนไปเต็มแม้ไม่มีข้อมูล)
+
+    // 🌟 1. จองพื้นที่เวลาล่วงหน้าตามช่วงเวลาที่เลือก (ถอยหลังไปให้สุดหน้าจอ)
     if (timeframe === 'month') {
       for (let i = 30; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(now.getDate() - i);
+        const d = new Date(); d.setDate(now.getDate() - i);
         const key = d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
-        processedMap.set(key, { time: key, timestamp: d.getTime(), level: 0, temp: 0, humid: 0 });
+        timelineMap.set(key, { time: key, timestamp: d.getTime(), level: 0, temp: 0, humid: 0 });
       }
     } else if (timeframe === 'year') {
       for (let i = 11; i >= 0; i--) {
-        const d = new Date();
-        d.setMonth(now.getMonth() - i);
+        const d = new Date(); d.setMonth(now.getMonth() - i);
         const key = d.toLocaleDateString('th-TH', { month: 'long' });
-        processedMap.set(key, { time: key, timestamp: d.getTime(), level: 0, temp: 0, humid: 0 });
+        timelineMap.set(key, { time: key, timestamp: d.getTime(), level: 0, temp: 0, humid: 0 });
       }
     } else if (timeframe === 'week') {
       for (let i = 7; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(now.getDate() - i);
+        const d = new Date(); d.setDate(now.getDate() - i);
         const key = d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
-        processedMap.set(key, { time: key, timestamp: d.getTime(), level: 0, temp: 0, humid: 0 });
+        timelineMap.set(key, { time: key, timestamp: d.getTime(), level: 0, temp: 0, humid: 0 });
       }
     }
 
-    // 🌟 2. นำข้อมูลจริงมา Mapping ลงในแกนเวลา
-    if (data && Array.isArray(data)) {
+    // 🌟 2. นำข้อมูลจริงมาหยอดทับ (ถ้ามีจุดไหน ข้อมูลจะเปลี่ยนจาก 0 เป็นค่าจริง)
+    if (data && data.length > 0) {
       data.forEach(log => {
         const date = new Date(log.createdAt || log.timestamp);
         let key = "";
         
-        if (timeframe === 'day') {
-          key = date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-        } else if (timeframe === 'year') {
-          key = date.toLocaleDateString('th-TH', { month: 'long' });
-        } else {
-          key = date.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
-        }
-
-        const deviceMac = log.mac || log.device_id;
-        const device = devices.find(d => d.mac === deviceMac);
-        const deviceName = device?.name || 'Unknown';
+        if (timeframe === 'day') key = date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+        else if (timeframe === 'year') key = date.toLocaleDateString('th-TH', { month: 'long' });
+        else key = date.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
 
         const val = {
           level: Number(log.level || 0),
@@ -73,28 +62,24 @@ export default function WaterLevelChart({ data, isDark, devices, timeframe, sele
           humid: Number(log.air_humidity || log.humidity || 0)
         };
 
-        // สำหรับรายวัน (Day) ให้เพิ่มจุดใหม่ตลอดเพราะต้องการความละเอียดสูง
         if (timeframe === 'day') {
-          if (!processedMap.has(key)) {
-            processedMap.set(key, { time: key, timestamp: date.getTime(), level: val.level, temp: val.temp, humid: val.humid });
-          }
-        } else {
-          // สำหรับช่วงอื่นๆ ให้หยอดลงใน Slot ที่เตรียมไว้
-          if (processedMap.has(key)) {
-            const entry = processedMap.get(key);
-            if (selectedDeviceMac === 'ALL') {
-              entry[`${deviceName}_${activeTab}`] = val[activeTab];
-            } else {
-              entry.level = val.level;
-              entry.temp = val.temp;
-              entry.humid = val.humid;
-            }
+          // รายวันเพิ่มจุดใหม่ตลอด
+          if (!timelineMap.has(key)) timelineMap.set(key, { time: key, timestamp: date.getTime(), ...val });
+        } else if (timelineMap.has(key)) {
+          // รายอื่นหยอดลงแกนเวลาที่จองไว้
+          const entry = timelineMap.get(key);
+          if (selectedDeviceMac === 'ALL') {
+            const device = devices.find(d => d.mac === log.mac);
+            const name = device?.name || 'Unknown';
+            entry[`${name}_${activeTab}`] = val[activeTab];
+          } else {
+            entry.level = val.level; entry.temp = val.temp; entry.humid = val.humid;
           }
         }
       });
     }
 
-    return Array.from(processedMap.values()).sort((a: any, b: any) => a.timestamp - b.timestamp);
+    return Array.from(timelineMap.values()).sort((a: any, b: any) => a.timestamp - b.timestamp);
   }, [data, timeframe, devices, selectedDeviceMac, activeTab]);
 
   const maxValue = useMemo(() => {
@@ -115,16 +100,14 @@ export default function WaterLevelChart({ data, isDark, devices, timeframe, sele
           { id: 'temp', label: 'อุณหภูมิ', icon: <Thermometer size={14}/>, color: 'bg-orange-500' },
           { id: 'humid', label: 'ความชื้น', icon: <Droplets size={14}/>, color: 'bg-emerald-500' }
         ].map((tab) => (
-          <button
-            key={tab.id} onClick={() => setActiveTab(tab.id as any)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tighter transition-all ${activeTab === tab.id ? `${tab.color} text-white shadow-lg` : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}
-          >
+          <button key={tab.id} onClick={() => setActiveTab(tab.id as any)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${activeTab === tab.id ? `${tab.color} text-white shadow-lg` : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
             {tab.icon} {tab.label}
           </button>
         ))}
       </div>
 
-      <div className="flex-grow w-full">
+      <div className="flex-grow w-full min-h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <defs>
@@ -135,7 +118,7 @@ export default function WaterLevelChart({ data, isDark, devices, timeframe, sele
             </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#334155' : '#e2e8f0'} />
             <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 9}} minTickGap={30} />
-            <YAxis domain={[0, maxValue]} axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
+            <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
             <Tooltip contentStyle={{ borderRadius: '15px', border: 'none', background: isDark ? '#1e293b' : '#fff', fontSize: '12px' }} />
             
             {selectedDeviceMac === 'ALL' ? (
@@ -143,7 +126,7 @@ export default function WaterLevelChart({ data, isDark, devices, timeframe, sele
                 <Area key={d.mac} type="monotone" name={d.name} dataKey={`${d.name}_${activeTab}`} stroke={["#10b981", "#3b82f6", "#f59e0b"][i % 3]} fillOpacity={0} strokeWidth={2.5} connectNulls />
               ))
             ) : (
-              <Area type="monotone" name={activeTab} dataKey={activeTab} stroke={typeColors[activeTab].stroke} fill="url(#colorFill)" strokeWidth={3} dot={false} connectNulls />
+              <Area type="monotone" name={activeTab} dataKey={activeTab} stroke={typeColors[activeTab].stroke} fill="url(#colorFill)" strokeWidth={3} connectNulls />
             )}
             <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
           </ComposedChart>
