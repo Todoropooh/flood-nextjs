@@ -6,9 +6,6 @@ import dynamic from 'next/dynamic';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation'; 
 
-// 🌟 บังคับไม่ให้ Next.js แอบจำค่าเก่า (Cache) เด็ดขาด
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
 // 🌟 Import Components
 import WaterLevelChart from '@/components/WaterLevelChart';
