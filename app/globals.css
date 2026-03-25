@@ -35,3 +35,14 @@ body {
 /* Animations (Keep your original code) */
 @keyframes wave { 0% { transform: scaleY(1); } 50% { transform: scaleY(0.6); } 100% { transform: scaleY(1); } }
 .animate-wave { animation: wave 5s ease-in-out infinite; }
+
+/* ลบพื้นหลังเดิมของ Leaflet Popup ออก เพื่อให้โชว์ Glassmorphism ของเราได้ */
+.custom-popup .leaflet-popup-content-wrapper {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.custom-popup .leaflet-popup-tip {
+  display: none !important; /* ซ่อนลูกศรชี้ลง */
+}

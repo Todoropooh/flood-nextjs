@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 import { 
   ArrowLeft, Trash2, XCircle, Search, Cpu, Plus, Edit2, Users, ShieldCheck, 
   Loader2, FileText, Calendar, Sun, Moon, Settings, UserCog, Ruler, Zap, Bell, Database,
-  Image as ImageIcon, Save, CheckCircle2 
+  Image as ImageIcon, Save, CheckCircle2, X
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -56,7 +56,6 @@ export default function AdminPage() {
       
       if (devRes.ok) {
         const devData = await devRes.json();
-        // 🛡️ กันระเบิด: บังคับให้เป็น Array เสมอ
         setDevices(Array.isArray(devData) ? devData : (devData?.mac ? [devData] : []));
       }
       
@@ -241,8 +240,12 @@ export default function AdminPage() {
   };
 
   if (!isMounted || status === 'loading') return (
-    <div className="flex h-screen items-center justify-center relative">
-      <Loader2 className="animate-spin text-blue-500" size={40} />
+    <div className="flex h-screen items-center justify-center relative overflow-hidden">
+      <div className="fixed inset-0 -z-10 bg-[#0f172a]">
+        <img src="https://images.pexels.com/photos/1295138/pexels-photo-1295138.jpeg" className="w-full h-full object-cover opacity-100" alt="background" />
+        <div className="absolute inset-0 bg-white/20 dark:bg-black/70 backdrop-blur-2xl transition-colors duration-500" />
+      </div>
+      <Loader2 className="animate-spin text-white drop-shadow-lg" size={40} />
     </div>
   );
 
@@ -255,77 +258,79 @@ export default function AdminPage() {
       {/* Background */}
       <div className="fixed inset-0 -z-10 bg-[#0f172a]">
         <img src="https://images.pexels.com/photos/1295138/pexels-photo-1295138.jpeg" className="w-full h-full object-cover opacity-100" alt="background" />
-        <div className="absolute inset-0 bg-slate-100/50 dark:bg-black/70 backdrop-blur-[40px]" />
+        <div className="absolute inset-0 bg-slate-100/50 dark:bg-black/70 backdrop-blur-[40px] transition-colors duration-500" />
       </div>
 
-      <header className={`sticky top-0 z-40 bg-white/40 dark:bg-black/40 backdrop-blur-2xl border-b border-white/30 dark:border-white/10 transition-all ${showUI ? 'translate-y-0' : '-translate-y-full'}`}>
+      <header className={`sticky top-0 z-40 bg-white/40 dark:bg-black/40 backdrop-blur-2xl border-b border-white/50 dark:border-white/10 transition-all duration-500 ${showUI ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
         <div className="max-w-6xl mx-auto px-6 py-4 flex flex-col md:flex-row gap-4 justify-between items-center">
           <div className="flex items-center gap-4">
-            <Link href="/" className="p-2 bg-white/50 dark:bg-black/50 rounded-xl shadow-sm border border-white/20 dark:border-white/5 backdrop-blur-md">
+            <Link href="/" className="p-2.5 bg-white/50 dark:bg-black/50 rounded-xl shadow-sm border border-white/50 dark:border-white/10 backdrop-blur-md hover:scale-105 transition-transform">
               <ArrowLeft size={16} className={isDark ? 'text-white' : 'text-slate-800'} />
             </Link>
-            <h1 className="text-sm font-black uppercase flex items-center gap-2 text-slate-800 dark:text-white">
-              <ShieldCheck size={18} className="text-blue-600 dark:text-blue-400" /> Admin Portal
+            <h1 className="text-sm font-black uppercase flex items-center gap-2 text-slate-800 dark:text-white drop-shadow-sm tracking-widest">
+              <ShieldCheck size={20} className="text-blue-600 dark:text-blue-400" /> Admin Portal
             </h1>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex p-1 bg-white/40 dark:bg-black/40 rounded-xl border border-white/30 dark:border-white/10 backdrop-blur-md">
+            <div className="flex p-1.5 bg-white/40 dark:bg-black/40 rounded-xl border border-white/50 dark:border-white/10 backdrop-blur-md shadow-inner">
               {(['nodes', 'users', 'system'] as const).map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)} 
-                  className={`px-5 py-2 rounded-lg text-[10px] font-black uppercase transition-all 
+                  className={`px-5 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all 
                   ${activeTab === tab 
-                    ? (isDark ? 'bg-blue-600 text-white' : 'bg-white shadow-md text-blue-600') 
-                    : 'text-slate-600 dark:text-slate-400'}`}>
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' 
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>
                   {tab}
                 </button>
               ))}
             </div>
-            <button onClick={() => setTheme(isDark ? 'light' : 'dark')} className="p-2.5 rounded-xl bg-white/40 dark:bg-black/40 border border-white/30 dark:border-white/10 backdrop-blur-md">
+            <button onClick={() => setTheme(isDark ? 'light' : 'dark')} className="p-3 rounded-xl bg-white/40 dark:bg-black/40 border border-white/50 dark:border-white/10 backdrop-blur-md text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-black/60 transition-all shadow-sm">
               {isDark ? <Sun size={16}/> : <Moon size={16}/>}
             </button>
-            <button onClick={() => signOut({ callbackUrl: '/' })} className="px-4 py-2.5 bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 rounded-xl text-[10px] font-black uppercase backdrop-blur-md">
+            <button onClick={() => signOut({ callbackUrl: '/' })} className="px-5 py-3 bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 hover:bg-red-500/30 rounded-xl text-[10px] font-black uppercase tracking-widest backdrop-blur-md transition-all">
               Logout
             </button>
           </div>
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto p-4 md:px-6 mt-8 relative z-10">
-        <div className={`flex flex-col sm:flex-row gap-3 mb-6 justify-between items-center p-4 rounded-3xl shadow-lg backdrop-blur-xl ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
-            <div className="relative w-full sm:w-64">
-               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+      <div className={`max-w-6xl mx-auto p-4 md:px-6 mt-8 relative z-10 transition-all duration-700 ${showUI ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
+        <div className={`flex flex-col sm:flex-row gap-4 mb-6 justify-between items-center p-5 rounded-[2rem] shadow-xl backdrop-blur-xl ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
+            <div className="relative w-full sm:w-72">
+               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
                <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} 
-                 className={`w-full pl-10 pr-4 py-2.5 rounded-xl text-xs font-bold outline-none backdrop-blur-sm ${isDark ? 'bg-black/40 border-white/10 text-white' : 'bg-white/50 border-white/40 text-slate-800'}`} />
+                 className={`w-full pl-12 pr-4 py-3 rounded-xl text-xs font-bold outline-none backdrop-blur-sm shadow-inner transition-all ${isDark ? 'bg-black/40 border border-white/10 text-white focus:border-blue-500/50' : 'bg-white/50 border border-white/40 text-slate-800 focus:border-blue-400/50'}`} />
             </div>
-            <div className="flex gap-2 w-full sm:w-auto">
-               <button onClick={() => openModal('export')} className="p-2.5 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl border border-emerald-500/30 backdrop-blur-md"><FileText size={18} /></button>
+            <div className="flex gap-3 w-full sm:w-auto">
+               <button onClick={() => openModal('export')} className="p-3 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-600 dark:text-emerald-400 rounded-xl border border-emerald-500/30 backdrop-blur-md transition-all shadow-sm"><FileText size={18} /></button>
                {activeTab !== 'system' && (
-                 <button onClick={() => openModal(activeTab === 'nodes' ? 'add' : 'user')} className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-2 shadow-lg border border-white/10"><Plus size={16}/> Add New</button>
+                 <button onClick={() => openModal(activeTab === 'nodes' ? 'add' : 'user')} className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg shadow-blue-500/30 border border-white/20 backdrop-blur-md transition-all"><Plus size={16}/> Add New</button>
                )}
             </div>
         </div>
 
-        <div className={`rounded-[2.5rem] shadow-2xl overflow-hidden backdrop-blur-xl ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
+        <div className={`rounded-[2.5rem] shadow-2xl overflow-hidden backdrop-blur-xl transition-all ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
+          
+          {/* ===================== NODES TAB ===================== */}
           {activeTab === 'nodes' && (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto p-2">
               <table className="w-full text-left text-sm">
-                <thead className={`text-[10px] font-black uppercase backdrop-blur-md ${isDark ? 'bg-black/40 text-slate-400 border-b border-white/5' : 'bg-white/40 text-slate-500 border-b border-white/20'}`}>
+                <thead className={`text-[10px] font-black uppercase tracking-widest backdrop-blur-md ${isDark ? 'bg-black/20 text-slate-400 border-b border-white/10' : 'bg-white/20 text-slate-500 border-b border-white/30'}`}>
                   <tr><th className="px-8 py-5">Node Info</th><th className="px-8 py-5">Settings</th><th className="px-8 py-5 text-right">Action</th></tr>
                 </thead>
-                <tbody className={`divide-y ${isDark ? 'divide-white/5' : 'divide-white/20'}`}>
+                <tbody className={`divide-y ${isDark ? 'divide-white/5' : 'divide-white/30'}`}>
                   {devices.filter(d => (d?.name || '').toLowerCase().includes(searchTerm.toLowerCase())).map(device => (
-                    <tr key={device?._id} className={`transition-colors ${isDark ? 'hover:bg-white/5 text-slate-200' : 'hover:bg-white/40 text-slate-700'}`}>
+                    <tr key={device?._id} className={`transition-colors group ${isDark ? 'hover:bg-white/5 text-slate-200' : 'hover:bg-white/40 text-slate-700'}`}>
                       <td className="px-8 py-5 flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border backdrop-blur-sm ${isDark ? 'bg-black/40 border-white/10' : 'bg-white/50 border-white/40'}`}>
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border backdrop-blur-sm shadow-inner group-hover:scale-105 transition-transform ${isDark ? 'bg-black/40 border-white/10' : 'bg-white/50 border-white/40'}`}>
                           {device?.image ? <img src={device.image} className="w-full h-full object-cover rounded-2xl" /> : <Cpu size={20} className={isDark ? 'text-slate-400' : 'text-blue-500'}/>}
                         </div>
-                        <div><div className="font-black">{device?.name || 'N/A'}</div><div className="text-[10px] font-mono opacity-60">{device?.mac || 'Unknown'}</div></div>
+                        <div><div className="font-black text-sm uppercase tracking-wide drop-shadow-sm">{device?.name || 'N/A'}</div><div className="text-[10px] font-mono font-bold opacity-60 mt-0.5">{device?.mac || 'Unknown'}</div></div>
                       </td>
-                      <td className="px-8 py-5 font-bold text-xs">
-                        H: {device?.installHeight || 0}m | <span className="text-red-500 dark:text-red-400">Crit: {device?.criticalThreshold || 0}m</span>
+                      <td className="px-8 py-5 font-bold text-[11px] uppercase tracking-wider">
+                        H: {device?.installHeight || 0}m | <span className="text-red-500 dark:text-red-400 ml-1">Crit: {device?.criticalThreshold || 0}m</span>
                       </td>
                       <td className="px-8 py-5 text-right">
-                        <button onClick={() => { setEditingId(device._id); openModal('add'); }} className={`p-2.5 rounded-xl backdrop-blur-md ${isDark ? 'bg-black/40 hover:bg-white/10 text-slate-300' : 'bg-white/60 hover:bg-white border border-white/40 text-slate-600'}`}><Edit2 size={14} /></button>
+                        <button onClick={() => { setEditingId(device._id); openModal('add'); }} className={`p-3 rounded-xl backdrop-blur-md shadow-sm transition-all ${isDark ? 'bg-black/40 hover:bg-white/10 text-slate-300' : 'bg-white/60 hover:bg-white border border-white/40 text-slate-600'}`}><Edit2 size={16} /></button>
                       </td>
                     </tr>
                   ))}
@@ -334,42 +339,47 @@ export default function AdminPage() {
             </div>
           )}
 
+          {/* ===================== USERS TAB ===================== */}
           {activeTab === 'users' && (
             <div className="flex flex-col h-full">
               {pendingUsers.length > 0 && (
                 <div className="p-6">
-                  <h3 className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-4">Pending Approval ({pendingUsers.length})</h3>
+                  <h3 className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-4 drop-shadow-sm">Pending Approval ({pendingUsers.length})</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {pendingUsers.map(u => (
-                      <div key={u._id} className="p-5 bg-amber-500/10 border border-amber-500/30 backdrop-blur-md rounded-[2rem] flex items-center justify-between">
-                        <div className={`font-black text-sm ${isDark ? 'text-white' : 'text-slate-800'}`}>{u.firstname || ''} {u.lastname || ''} <span className="block text-[10px] font-normal opacity-70">@{u.username}</span></div>
+                      <div key={u._id} className="p-5 bg-amber-500/10 border border-amber-500/30 backdrop-blur-md rounded-[2rem] flex items-center justify-between shadow-sm">
+                        <div className={`font-black text-sm uppercase tracking-wide drop-shadow-sm ${isDark ? 'text-white' : 'text-slate-800'}`}>{u.firstname || ''} {u.lastname || ''} <span className="block text-[9px] font-mono font-bold opacity-70 mt-1">@{u.username}</span></div>
                         <div className="flex gap-2">
-                          <button onClick={() => handleApproveUser(u._id, true)} disabled={isSaving} className="p-2.5 bg-emerald-500 text-white rounded-xl shadow-lg"><CheckCircle2 size={18}/></button>
-                          <button onClick={() => handleApproveUser(u._id, false)} disabled={isSaving} className="p-2.5 bg-red-500 text-white rounded-xl shadow-lg"><XCircle size={18}/></button>
+                          <button onClick={() => handleApproveUser(u._id, true)} disabled={isSaving} className="p-3 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl shadow-lg transition-all"><CheckCircle2 size={18}/></button>
+                          <button onClick={() => handleApproveUser(u._id, false)} disabled={isSaving} className="p-3 bg-red-500 hover:bg-red-400 text-white rounded-xl shadow-lg transition-all"><XCircle size={18}/></button>
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
-              <div className="overflow-x-auto border-t border-white/20 dark:border-white/5">
+              <div className="overflow-x-auto border-t border-white/30 dark:border-white/10 p-2">
                 <table className="w-full text-left text-sm">
-                  <thead className={`text-[10px] font-black uppercase backdrop-blur-md ${isDark ? 'bg-black/40 text-slate-400 border-b border-white/5' : 'bg-white/40 text-slate-500 border-b border-white/20'}`}>
-                    <tr><th className="px-8 py-5">User</th><th className="px-8 py-5">Role</th><th className="px-8 py-5 text-right">Action</th></tr>
+                  <thead className={`text-[10px] font-black uppercase tracking-widest backdrop-blur-md ${isDark ? 'bg-black/20 text-slate-400 border-b border-white/10' : 'bg-white/20 text-slate-500 border-b border-white/30'}`}>
+                    <tr><th className="px-8 py-5">User Profile</th><th className="px-8 py-5 text-center">Role</th><th className="px-8 py-5 text-right">Action</th></tr>
                   </thead>
-                  <tbody className={`divide-y ${isDark ? 'divide-white/5' : 'divide-white/20'}`}>
+                  <tbody className={`divide-y ${isDark ? 'divide-white/5' : 'divide-white/30'}`}>
                     {activeUsers.map(user => (
-                      <tr key={user._id} className={`transition-colors ${isDark ? 'hover:bg-white/5 text-slate-200' : 'hover:bg-white/40 text-slate-700'}`}>
+                      <tr key={user._id} className={`transition-colors group ${isDark ? 'hover:bg-white/5 text-slate-200' : 'hover:bg-white/40 text-slate-700'}`}>
                         <td className="px-8 py-5 flex items-center gap-4">
-                          <div className={`w-10 h-10 rounded-full overflow-hidden border backdrop-blur-sm ${isDark ? 'bg-black/40 border-white/10' : 'bg-white/50 border-white/40'}`}>
-                            {user?.image ? <img src={user.image} className="w-full h-full object-cover" /> : <Users size={18} className="text-slate-400" />}
+                          <div className={`w-12 h-12 rounded-full overflow-hidden border backdrop-blur-sm shadow-inner group-hover:scale-105 transition-transform ${isDark ? 'bg-black/40 border-white/10' : 'bg-white/50 border-white/40'}`}>
+                            {user?.image ? <img src={user.image} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Users size={20} className="text-slate-400" /></div>}
                           </div>
-                          <div><div className="font-black">{user.firstname || ''} {user.lastname || ''}</div><div className="text-[10px] opacity-60">@{user.username || 'unknown'}</div></div>
+                          <div><div className="font-black text-sm uppercase tracking-wide drop-shadow-sm">{user.firstname || ''} {user.lastname || ''}</div><div className="text-[10px] font-mono font-bold opacity-60 mt-0.5">@{user.username || 'unknown'}</div></div>
                         </td>
-                        <td className="px-8 py-5"><span className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/20">{user.role || 'user'}</span></td>
+                        <td className="px-8 py-5 text-center">
+                          <span className={`inline-block px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border backdrop-blur-md ${user.role === 'admin' ? 'bg-purple-500/20 text-purple-600 dark:text-purple-400 border-purple-500/30' : 'bg-blue-500/20 text-blue-600 dark:text-blue-400 border-blue-500/30'}`}>
+                            {user.role || 'user'}
+                          </span>
+                        </td>
                         <td className="px-8 py-5 text-right space-x-2">
-                          <button onClick={() => { setEditingId(user._id); setUserFormData({...user, password: ''}); openModal('user'); }} className={`p-2.5 rounded-xl backdrop-blur-md ${isDark ? 'bg-black/40 text-slate-300' : 'bg-white/60 text-slate-600'}`}><Edit2 size={14} /></button>
-                          <button onClick={() => handleDeleteUser(user._id)} className="p-2.5 bg-red-500/20 text-red-600 dark:text-red-400 rounded-xl border border-red-500/20 backdrop-blur-md"><Trash2 size={14} /></button>
+                          <button onClick={() => { setEditingId(user._id); setUserFormData({...user, password: ''}); openModal('user'); }} className={`p-3 rounded-xl backdrop-blur-md shadow-sm transition-all ${isDark ? 'bg-black/40 hover:bg-white/10 text-slate-300' : 'bg-white/60 hover:bg-white border border-white/40 text-slate-600'}`}><Edit2 size={16} /></button>
+                          <button onClick={() => handleDeleteUser(user._id)} className="p-3 bg-red-500/20 hover:bg-red-500/30 text-red-600 dark:text-red-400 rounded-xl border border-red-500/30 backdrop-blur-md transition-all shadow-sm"><Trash2 size={16} /></button>
                         </td>
                       </tr>
                     ))}
@@ -379,50 +389,127 @@ export default function AdminPage() {
             </div>
           )}
 
+          {/* ===================== SYSTEM TAB ===================== */}
           {activeTab === 'system' && (
             <div className="p-8 space-y-8">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className={`p-8 rounded-[2.5rem] shadow-lg backdrop-blur-md border ${isDark ? 'bg-black/20 border-white/10' : 'bg-white/40 border-white/50'}`}>
-                  <div className="flex items-center gap-3 mb-6"><Bell size={20} className="text-blue-600 dark:text-blue-400"/><h3 className={`font-black text-lg ${isDark ? 'text-white':'text-slate-800'}`}>Telegram Notifications</h3></div>
+                <div className={`p-8 rounded-[2.5rem] shadow-xl backdrop-blur-xl border ${isDark ? 'bg-black/40 border-white/10' : 'bg-white/40 border-white/50'}`}>
+                  <div className="flex items-center gap-3 mb-6"><Bell size={24} className="text-blue-600 dark:text-blue-400 drop-shadow-md"/><h3 className={`font-black text-xl uppercase tracking-widest drop-shadow-sm ${isDark ? 'text-white':'text-slate-800'}`}>Telegram Integration</h3></div>
                   <div className="space-y-4">
-                    <input type="text" placeholder="Bot API Token" value={botToken} onChange={e => setBotToken(e.target.value)} 
-                      className={`w-full px-5 py-3.5 rounded-2xl text-xs font-bold outline-none backdrop-blur-sm ${isDark ? 'bg-black/40 border border-white/10 text-white' : 'bg-white/60 border border-white/40 text-slate-800'}`} />
-                    <input type="text" placeholder="Chat ID" value={chatId} onChange={e => setChatId(e.target.value)} 
-                      className={`w-full px-5 py-3.5 rounded-2xl text-xs font-bold outline-none backdrop-blur-sm ${isDark ? 'bg-black/40 border border-white/10 text-white' : 'bg-white/60 border border-white/40 text-slate-800'}`} />
-                    <button onClick={handleTestTelegram} disabled={isSaving} className="w-full py-4 mt-2 bg-emerald-500 hover:bg-emerald-400 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg transition-all">Test Connection</button>
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-2 mb-1 block">Bot API Token</label>
+                      <input type="text" placeholder="Enter Bot Token" value={botToken} onChange={e => setBotToken(e.target.value)} 
+                        className={`w-full px-5 py-4 rounded-2xl text-xs font-bold outline-none backdrop-blur-sm shadow-inner transition-all ${isDark ? 'bg-black/60 border border-white/10 text-white focus:border-blue-500/50' : 'bg-white/60 border border-white/40 text-slate-800 focus:border-blue-400/50'}`} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-2 mb-1 block">Target Chat ID</label>
+                      <input type="text" placeholder="Enter Chat ID" value={chatId} onChange={e => setChatId(e.target.value)} 
+                        className={`w-full px-5 py-4 rounded-2xl text-xs font-bold outline-none backdrop-blur-sm shadow-inner transition-all ${isDark ? 'bg-black/60 border border-white/10 text-white focus:border-blue-500/50' : 'bg-white/60 border border-white/40 text-slate-800 focus:border-blue-400/50'}`} />
+                    </div>
+                    <button onClick={handleTestTelegram} disabled={isSaving} className="w-full py-4 mt-4 bg-emerald-500/90 hover:bg-emerald-500 text-white rounded-2xl font-black uppercase text-[11px] tracking-widest shadow-lg shadow-emerald-500/30 transition-all border border-white/20 backdrop-blur-md flex justify-center items-center gap-2">
+                       <Zap size={16}/> Test Connection
+                    </button>
                   </div>
                 </div>
-                <div className={`p-8 rounded-[2.5rem] shadow-lg backdrop-blur-md border flex flex-col items-center justify-center gap-6 text-center ${isDark ? 'bg-black/20 border-white/10' : 'bg-white/40 border-white/50'}`}>
-                   <div className="relative group cursor-pointer rounded-3xl overflow-hidden shadow-2xl border-4 border-white/50 dark:border-white/10">
+                <div className={`p-8 rounded-[2.5rem] shadow-xl backdrop-blur-xl border flex flex-col items-center justify-center gap-6 text-center ${isDark ? 'bg-black/40 border-white/10' : 'bg-white/40 border-white/50'}`}>
+                   <div className="relative group cursor-pointer rounded-[2rem] overflow-hidden shadow-2xl border-4 border-white/50 dark:border-white/10">
                       <img src={qrImage} alt="QR" className="w-48 h-48 object-cover" />
-                      <label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-all cursor-pointer backdrop-blur-sm"><ImageIcon size={24} /><span className="text-[10px] font-black uppercase mt-2">Change Image</span><input type="file" accept="image/*" className="hidden" onChange={handleQRUpload} /></label>
+                      <label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-all cursor-pointer backdrop-blur-md">
+                        <ImageIcon size={28} className="mb-2" />
+                        <span className="text-[10px] font-black uppercase tracking-widest">Change QR Image</span>
+                        <input type="file" accept="image/*" className="hidden" onChange={handleQRUpload} />
+                      </label>
                    </div>
-                   <h4 className="font-black text-xs uppercase text-slate-800 dark:text-slate-200">Subscriber QR Code</h4>
+                   <div>
+                     <h4 className="font-black text-sm uppercase tracking-widest text-slate-800 dark:text-slate-200 drop-shadow-sm">Subscriber QR Code</h4>
+                     <p className="text-[10px] font-bold text-slate-500 uppercase mt-1">For users to scan and join alert group</p>
+                   </div>
                 </div>
               </div>
-              <button onClick={handleSaveSystemSettings} disabled={isSaving} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-3xl font-black uppercase tracking-widest shadow-xl transition-all flex items-center justify-center gap-3">{isSaving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={20}/> Update System Config</>}</button>
+              <button onClick={handleSaveSystemSettings} disabled={isSaving} className="w-full bg-blue-600/90 hover:bg-blue-600 text-white py-5 rounded-3xl font-black uppercase tracking-widest shadow-xl shadow-blue-500/30 transition-all flex items-center justify-center gap-3 border border-white/20 backdrop-blur-md">
+                {isSaving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={20}/> Update System Configuration</>}
+              </button>
             </div>
           )}
         </div>
       </div>
 
+      {/* ===================== MODALS ===================== */}
+
       {/* Export Modal */}
       {modalState.export && (
-        <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4 transition-all ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
-          <div className={`rounded-[2.5rem] shadow-2xl w-full max-w-sm p-8 text-center space-y-6 border backdrop-blur-xl ${isDark ? 'bg-[#1C1C1E]/80 border-white/10' : 'bg-white/80 border-white/50'}`}>
-              <div className="p-4 bg-blue-500/10 rounded-full w-20 h-20 mx-auto flex items-center justify-center border border-blue-500/20"><FileText size={36} className="text-blue-600 dark:text-blue-400"/></div>
-              <h3 className={`font-black text-xl ${isDark ? 'text-white':'text-slate-800'}`}>Generate Report</h3>
+        <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4 transition-all duration-300 ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
+          <div className={`rounded-[3rem] shadow-2xl w-full max-w-sm p-8 text-center space-y-6 border backdrop-blur-2xl transform transition-transform duration-300 ${modalAnim ? 'scale-100 translate-y-0' : 'scale-95 translate-y-8'} ${isDark ? 'bg-[#1C1C1E]/80 border-white/10' : 'bg-white/80 border-white/50'}`}>
+              <div className="p-5 bg-blue-500/10 rounded-3xl w-24 h-24 mx-auto flex items-center justify-center border border-blue-500/20 shadow-inner"><FileText size={40} className="text-blue-600 dark:text-blue-400"/></div>
+              <div>
+                <h3 className={`font-black text-2xl uppercase tracking-tight drop-shadow-sm ${isDark ? 'text-white':'text-slate-800'}`}>Generate Report</h3>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Download PDF Document</p>
+              </div>
               <select value={exportDays} onChange={e => setExportDays(Number(e.target.value))} 
-                className={`w-full p-4 rounded-2xl outline-none font-black text-sm text-center backdrop-blur-sm ${isDark ? 'bg-black/40 border border-white/10 text-white' : 'bg-white/60 border border-white/40 text-slate-800'}`}>
-                <option value={1}>Last 24 Hours</option><option value={7}>Last 7 Days</option><option value={30}>Last 30 Days</option>
+                className={`w-full p-4 rounded-2xl outline-none font-black text-xs uppercase tracking-widest text-center backdrop-blur-sm shadow-inner cursor-pointer ${isDark ? 'bg-black/40 border border-white/10 text-white' : 'bg-white/60 border border-white/40 text-slate-800'}`}>
+                <option value={1} className="text-black">Last 24 Hours</option><option value={7} className="text-black">Last 7 Days</option><option value={30} className="text-black">Last 30 Days</option>
               </select>
-              <button onClick={executeExportPDF} disabled={isExporting} className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-white font-black uppercase tracking-widest rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all">{isExporting ? <Loader2 className="animate-spin" size={20} /> : 'Download PDF'}</button>
-              <button onClick={closeModal} className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase hover:text-red-500 transition-colors">Close Window</button>
+              <button onClick={executeExportPDF} disabled={isExporting} className="w-full py-4 bg-emerald-500/90 hover:bg-emerald-500 text-white font-black uppercase text-[11px] tracking-widest rounded-2xl shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2 transition-all border border-white/20 backdrop-blur-md">
+                {isExporting ? <Loader2 className="animate-spin" size={20} /> : <><Download size={16}/> Download PDF</>}
+              </button>
+              <button onClick={closeModal} className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors p-2">Cancel & Close</button>
           </div>
         </div>
       )}
 
-      {/* NodeModal */}
+      {/* 🌟 [NEW] USER EDIT MODAL (กดปุ่มดินสอแล้วเด้งอันนี้) */}
+      {modalState.user && (
+        <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4 transition-all duration-300 ${modalAnim ? 'opacity-100' : 'opacity-0'}`}>
+          <div className={`rounded-[3rem] shadow-2xl w-full max-w-md p-8 border backdrop-blur-2xl transform transition-transform duration-300 ${modalAnim ? 'scale-100 translate-y-0' : 'scale-95 translate-y-8'} ${isDark ? 'bg-[#1C1C1E]/90 border-white/10' : 'bg-white/90 border-white/50'}`}>
+            <div className="flex justify-between items-center mb-6">
+              <h3 className={`font-black text-xl uppercase tracking-tight flex items-center gap-2 drop-shadow-sm ${isDark ? 'text-white':'text-slate-800'}`}>
+                <UserCog size={24} className="text-blue-500" /> {editingId ? 'Edit User Role' : 'Add New User'}
+              </h3>
+              <button onClick={closeModal} className="p-2 bg-white/20 dark:bg-black/20 rounded-full hover:bg-red-500/20 hover:text-red-500 transition-colors"><X size={20} /></button>
+            </div>
+            
+            <form onSubmit={handleUserSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-2 mb-1 block">First Name</label>
+                  <input type="text" required value={userFormData.firstname} onChange={e => setUserFormData({...userFormData, firstname: e.target.value})} className={`w-full px-4 py-3 rounded-2xl text-xs font-bold outline-none backdrop-blur-sm shadow-inner ${isDark ? 'bg-black/40 border border-white/10 text-white' : 'bg-white/60 border border-white/40 text-slate-800'}`} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-2 mb-1 block">Last Name</label>
+                  <input type="text" required value={userFormData.lastname} onChange={e => setUserFormData({...userFormData, lastname: e.target.value})} className={`w-full px-4 py-3 rounded-2xl text-xs font-bold outline-none backdrop-blur-sm shadow-inner ${isDark ? 'bg-black/40 border border-white/10 text-white' : 'bg-white/60 border border-white/40 text-slate-800'}`} />
+                </div>
+              </div>
+              
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-2 mb-1 block">Username</label>
+                <input type="text" required value={userFormData.username} onChange={e => setUserFormData({...userFormData, username: e.target.value})} disabled={!!editingId} className={`w-full px-4 py-3 rounded-2xl text-xs font-bold outline-none backdrop-blur-sm shadow-inner disabled:opacity-50 ${isDark ? 'bg-black/40 border border-white/10 text-white' : 'bg-white/60 border border-white/40 text-slate-800'}`} />
+              </div>
+
+              {!editingId && (
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-2 mb-1 block">Password</label>
+                  <input type="password" required value={userFormData.password} onChange={e => setUserFormData({...userFormData, password: e.target.value})} className={`w-full px-4 py-3 rounded-2xl text-xs font-bold outline-none backdrop-blur-sm shadow-inner ${isDark ? 'bg-black/40 border border-white/10 text-white' : 'bg-white/60 border border-white/40 text-slate-800'}`} />
+                </div>
+              )}
+
+              {/* 🌟 จุดสำคัญ: เปลี่ยน Role ผู้ใช้ */}
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-2 mb-1 block">System Role</label>
+                <select value={userFormData.role} onChange={e => setUserFormData({...userFormData, role: e.target.value})} className={`w-full px-4 py-3 rounded-2xl text-xs font-black uppercase tracking-widest outline-none backdrop-blur-sm shadow-inner cursor-pointer ${isDark ? 'bg-black/40 border border-white/10 text-white' : 'bg-white/60 border border-white/40 text-slate-800'}`}>
+                  <option value="user" className="text-black">User (View Only)</option>
+                  <option value="admin" className="text-black">Admin (Full Access)</option>
+                </select>
+              </div>
+
+              <button type="submit" disabled={isSaving} className="w-full mt-6 py-4 bg-blue-600/90 hover:bg-blue-500 text-white font-black uppercase text-[11px] tracking-widest rounded-2xl shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 transition-all border border-white/20 backdrop-blur-md">
+                {isSaving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={16}/> Save User Data</>}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* NodeModal (External Component) */}
       <NodeModal 
         isOpen={modalState.add} 
         modalAnim={modalAnim} 
@@ -433,7 +520,7 @@ export default function AdminPage() {
         isSaving={isSaving} 
       />
 
-      {/* PDF Chart Container */}
+      {/* PDF Chart Container (Hidden) */}
       <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '800px', height: '400px', zIndex: -1 }}>
         <div id="pdf-chart-container" className="bg-white p-10"><h2 className="text-center font-bold text-xl mb-4">Flood Monitoring Trend</h2>
             <div className="h-[300px]"><WaterLevelChart data={exportLogs} timeframe="month" isDark={false} devices={devices} selectedDeviceMac="ALL" /></div>

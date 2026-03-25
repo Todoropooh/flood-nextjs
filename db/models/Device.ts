@@ -15,8 +15,7 @@ const DeviceSchema = new mongoose.Schema({
   lat: { type: Number, default: 14.8824 }, 
   lng: { type: Number, default: 103.4936 }, 
   
-  // 📏 [NEW] ระยะติดตั้งเซนเซอร์จากพื้น (Install Height)
-  // ใช้สำหรับคำนวณระดับน้ำ: (installHeight - ระยะที่เซนเซอร์อ่านได้)
+  // 📏 ระยะติดตั้งเซนเซอร์จากพื้น (Install Height)
   installHeight: { 
     type: Number, 
     default: 62.0 
@@ -30,6 +29,12 @@ const DeviceSchema = new mongoose.Schema({
   waterLevel: { type: Number, default: 0 },
   temperature: { type: Number, default: 0 },
   humidity: { type: Number, default: 0 },
+
+  // 📈 [NEW] แนวโน้มระดับน้ำ (cm/h) ที่คำนวณจาก API
+  trend: { 
+    type: Number, 
+    default: 0 
+  },
 
   // 📡 การเชื่อมต่อ
   lastPing: { type: Date, default: Date.now },
@@ -45,7 +50,12 @@ const DeviceSchema = new mongoose.Schema({
     default: true 
   },
 
-  // 📱 [NEW] เบอร์โทรศัพท์สำหรับรับ SMS แจ้งเตือนตอนไฟดับ
+  // 📱 [NEW] ระบบ SMS
+  isSmsEnabled: { 
+    type: Boolean, 
+    default: true 
+  },
+  
   phoneNumber: { 
     type: String, 
     default: '' 
