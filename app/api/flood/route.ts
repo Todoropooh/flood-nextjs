@@ -21,6 +21,32 @@ async function sendTelegramMessage(message: string) {
   } catch (e) { return "Error"; }
 }
 
+// 🌟 [NEW] ฟังก์ชันสำหรับเตรียมส่ง SMS
+async function sendSMS(message: string, phoneNumber: string) {
+  try {
+    // 💡 [คำแนะนำ]: การจะส่ง SMS เข้าเบอร์มือถือจริงๆ พี่ต้องเช่าบริการ SMS API 
+    // เช่น ThaiBulkSMS, SMSMKT, หรือ Twilio แล้วเอา API URL มาใส่ตรงนี้ครับ
+    // ชั่วคราวผมทำ Console.log เอาไว้ให้พี่ดูก่อนว่าระบบมัน "สั่งยิง" แล้วจริงๆ
+    
+    console.log(`\n📲 [SMS ALERT TRIGGERED]`);
+    console.log(`📍 ส่งไปที่เบอร์: ${phoneNumber}`);
+    console.log(`✉️ ข้อความ: ${message}\n`);
+    
+    /* โค้ดตัวอย่างการเรียกใช้ API ของจริง (ปลดคอมเมนต์เมื่อมี API Key)
+    await fetch('https://api.sms-provider.com/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer YOUR_API_KEY_HERE' },
+      body: JSON.stringify({ to: phoneNumber, message: message })
+    });
+    */
+    
+    return true;
+  } catch (error) {
+    console.error("SMS Sending Error:", error);
+    return false;
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
@@ -60,7 +86,6 @@ export async function POST(request: NextRequest) {
     if (wl > h) wl = h;
 
     // 📈 [TREND LOGIC] คำนวณแนวโน้มแบบแม่นยำ
-    // ดึงข้อมูลย้อนหลัง 15 นาทีมาหาค่าเฉลี่ย
     const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000);
     const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1000);
 
@@ -72,21 +97,18 @@ export async function POST(request: NextRequest) {
     const avgRecent = recentLogs.length > 0 ? recentLogs.reduce((acc, curr) => acc + curr.level, 0) / recentLogs.length : wl;
     const avgOlder = olderLogs.length > 0 ? olderLogs.reduce((acc, curr) => acc + curr.level, 0) / olderLogs.length : wl;
     
-    // อัตราการเปลี่ยนแปลง (cm ต่อชั่วโมง)
-    // สูตร: (ค่าเฉลี่ยใหม่ - ค่าเฉลี่ยเก่า) * 12 (เพราะห่างกันช่วงละ 5 นาที)
     const calculatedTrend = (avgRecent - avgOlder) * 12;
 
     const status = wl >= (device.criticalThreshold || 10) ? "CRITICAL" : 
                    (wl >= (device.warningThreshold || 5) ? "WARNING" : "STABLE");
 
-    // อัปเดตข้อมูลลง Device (รวม Trend เข้าไปด้วย)
     await Device.findOneAndUpdate({ mac }, { 
       waterLevel: wl, 
       temperature: Number(temperature) || 0,
       humidity: Number(humidity) || 0, 
       lastPing: new Date(), 
       status: status,
-      trend: calculatedTrend // 🌟 เก็บค่าแนวโน้มลง DB
+      trend: calculatedTrend 
     });
 
     await WaterLog.create({ 
@@ -95,7 +117,7 @@ export async function POST(request: NextRequest) {
       air_humidity: Number(humidity) || 0, status: status 
     });
 
-    // แจ้งเตือน Telegram
+    // 🚨 จัดการการแจ้งเตือน (Telegram & SMS)
     if (device.isActive && status !== "STABLE") {
       const now = Date.now();
       const lastAlert = lastAlertTime.get(mac) || 0;
@@ -104,9 +126,20 @@ export async function POST(request: NextRequest) {
         const trendEmoji = calculatedTrend > 2 ? "📈" : (calculatedTrend < -2 ? "📉" : "➡️");
         const alertStatus = status === "CRITICAL" ? "🚨 ระดับน้ำวิกฤต!" : "⚠️ เฝ้าระวังน้ำสูง!";
         
-        const msg = `<b>${alertStatus}</b>\n📍 ${device.name}\n🌊 ระดับ: ${wl.toFixed(2)} cm\n📊 แนวโน้ม: ${trendEmoji} ${calculatedTrend.toFixed(2)} cm/h\n🌡️ Temp: ${Number(temperature).toFixed(1)}°C`;
+        // 1. ส่งเข้า Telegram (เตือนทุกระดับ)
+        const tgMsg = `<b>${alertStatus}</b>\n📍 ${device.name}\n🌊 ระดับ: ${wl.toFixed(2)} cm\n📊 แนวโน้ม: ${trendEmoji} ${calculatedTrend.toFixed(2)} cm/h\n🌡️ Temp: ${Number(temperature).toFixed(1)}°C`;
+        await sendTelegramMessage(tgMsg);
         
-        await sendTelegramMessage(msg);
+        // 2. 📱 [NEW] ส่ง SMS เข้ามือถือ (เตือนเฉพาะระดับวิกฤต และเปิดสวิตช์ SMS Alert ไว้)
+        if (status === "CRITICAL" && device.isSmsEnabled) {
+          
+          // 💡 ใส่เบอร์โทรศัพท์ที่ต้องการให้ระบบยิง SMS ไปหาตรงนี้ครับ (เช่น เบอร์ผู้ใหญ่บ้าน, เบอร์แอดมิน)
+          const targetPhoneNumber = "0891234567"; 
+          
+          const smsMsg = `[เตือนภัยน้ำท่วม] สถานี: ${device.name} ระดับน้ำ: ${wl.toFixed(2)}cm ถึงจุดวิกฤตแล้ว!`;
+          await sendSMS(smsMsg, targetPhoneNumber);
+        }
+
         lastAlertTime.set(mac, now);
       }
     }

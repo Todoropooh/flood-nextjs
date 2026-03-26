@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     const device = await Device.findOne({ mac }).lean();
     if (!device) return NextResponse.json({ error: 'Device not found' }, { status: 404 });
 
-    // 🌟 ดึงข้อมูลมาจับคู่ส่ง (เพิ่ม phoneNumber เข้าไปใน JSON เพื่อให้บอร์ด ESP32 อ่าน)
+    // 🌟 ดึงข้อมูลมาจับคู่ส่งให้บอร์ด ESP32
     return NextResponse.json({
       mac: device.mac,
       name: device.name || "Station",
@@ -29,13 +29,14 @@ export async function GET(request: Request) {
       isBuzzerEnabled: device.isBuzzerEnabled ?? true,
       systemOn: device.isActive ?? true,    
       buzzerOn: device.isBuzzerEnabled ?? true, 
+      isSmsEnabled: device.isSmsEnabled ?? false, // 🚨 [แก้ตรงนี้!] เพิ่มสวิตช์ SMS ส่งให้บอร์ด
       installHeight: device.installHeight || 12.6,
       warningThreshold: device.warningThreshold || 2.0,
       criticalThreshold: device.criticalThreshold || 5.0,
       waterLevel: device.waterLevel || 0,
       lastPing: device.lastPing || new Date(),
       status: device.status || "STABLE",
-      phoneNumber: device.phoneNumber || "" // 📱 🌟 ส่งเบอร์โทรศัพท์ไปให้บอร์ด
+      phoneNumber: device.phoneNumber || "" // 📱 ส่งเบอร์โทรศัพท์ไปให้บอร์ด
     });
 
   } catch (error: any) {
@@ -45,7 +46,8 @@ export async function GET(request: Request) {
       systemOn: true,
       isBuzzerEnabled: true,
       buzzerOn: true,
-      phoneNumber: "" // ป้องกันบอร์ดพังถ้า DB มีปัญหา
+      isSmsEnabled: false, // 🚨 [แก้ตรงนี้!] กันเหนียวกรณีฐานข้อมูลล่ม
+      phoneNumber: "" 
     }, { status: 200 }); 
   }
 }
@@ -58,7 +60,7 @@ export async function POST(request: Request) {
     
     if (!mac) return NextResponse.json({ error: "MAC required" }, { status: 400 });
 
-    // 🌟 บันทึกข้อมูล (ตัวแปร phoneNumber ที่ส่งมาจากหน้าเว็บจะถูกเก็บใน updateData และ Save ลง Mongo ทันที)
+    // 🌟 บันทึกข้อมูลลง DB
     const updated = await Device.findOneAndUpdate(
       { mac }, 
       { $set: updateData }, 

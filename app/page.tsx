@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation'; 
 import Link from 'next/link'; 
-import { toast, Toaster } from 'react-hot-toast'; // อย่าลืมลง npm install react-hot-toast
+import { toast, Toaster } from 'react-hot-toast'; 
 
 // 🌟 Import ไลบรารีสำหรับทำ PDF
 import jsPDF from 'jspdf';
@@ -43,12 +43,10 @@ export default function Home() {
   const [weather, setWeather] = useState<any>(null);
   const [isExporting, setIsExporting] = useState(false);
 
-  // 🔔 Ref สำหรับเก็บเวลาแจ้งเตือนล่าสุดของแต่ละ Node (ป้องกันการเด้งซ้ำซ้อน)
   const lastNotifiedRef = useRef<Record<string, number>>({});
 
   useEffect(() => { 
     setIsMounted(true); 
-    // ขออนุญาตแจ้งเตือนบนเบราว์เซอร์
     if (typeof window !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission();
     }
@@ -73,18 +71,19 @@ export default function Home() {
     
     try {
       const t = Date.now();
-      const [logRes, devRes] = await Promise.all([
+      // 🌟 [แก้บั๊ก] เปลี่ยนจาก Promise.all เป็น allSettled และแก้ไขจาก /api/settings เป็น /api/devices!
+      const [logRes, devRes] = await Promise.allSettled([
         fetch(`/api/flood?timeframe=${timeframe}&t=${t}`, { cache: 'no-store' }),
-        fetch(`/api/settings?t=${t}`, { cache: 'no-store' }) 
+        fetch(`/api/devices?t=${t}`, { cache: 'no-store' }) 
       ]);
       
-      if (logRes.ok) {
-        const logData = await logRes.json();
+      if (logRes.status === 'fulfilled' && logRes.value.ok) {
+        const logData = await logRes.value.json();
         setLogs(Array.isArray(logData) ? logData : []);
       }
       
-      if (devRes.ok) {
-        const devData = await devRes.json();
+      if (devRes.status === 'fulfilled' && devRes.value.ok) {
+        const devData = await devRes.value.json();
         if (Array.isArray(devData)) {
           setDevices(devData);
         } else if (devData && typeof devData === 'object') {
@@ -96,9 +95,7 @@ export default function Home() {
     } catch (err) { console.error("Fetch error:", err); }
   }, [timeframe, status]);
 
-  // 🔔 ฟังก์ชันแจ้งเตือน Noti
   const triggerPushNotification = useCallback((name: string, level: number) => {
-    // 1. แจ้งเตือนแบบ Toast ภายในแอป (สีแดงวิกฤต)
     toast.custom((t) => (
       <div className={`${t.visible ? 'animate-in fade-in slide-in-from-top-4' : 'animate-out fade-out slide-out-to-top-2'} max-w-md w-full bg-red-600/90 backdrop-blur-xl shadow-2xl rounded-[1.5rem] pointer-events-auto flex border border-white/30 p-4 text-white`}>
         <div className="flex-1 w-0 p-1">
@@ -119,7 +116,6 @@ export default function Home() {
       </div>
     ), { duration: 8000 });
 
-    // 2. แจ้งเตือนแบบเบราว์เซอร์ Push (กรณีพับจอ)
     if (Notification.permission === 'granted') {
       new Notification(`🚨 ระดับน้ำวิกฤต: ${name}`, {
         body: `ตรวจพบระดับน้ำ ${level.toFixed(2)} cm กรุณาตรวจสอบสถานการณ์ด่วน!`,
@@ -138,28 +134,24 @@ export default function Home() {
     }
   }, [fetchData, status]);
 
-  // 🔔 Effect สำหรับเช็คการแจ้งเตือนจากข้อมูลที่โหลดมาใหม่
+  // 🔔 เช็คการแจ้งเตือนจากข้อมูล devices โดยตรง
   useEffect(() => {
-    if (!logs.length || !devices.length) return;
+    if (!devices.length) return;
     
     devices.forEach(device => {
-      const deviceLogs = logs.filter(l => (l.mac || l.device_id) === device.mac);
-      if (deviceLogs.length === 0) return;
-
-      const latestLog = deviceLogs[deviceLogs.length - 1];
-      const waterLevel = Number(latestLog.level || 0);
+      // ดึงระดับน้ำล่าสุดของอุปกรณ์นั้นๆ จาก Device Collection โดยตรง
+      const waterLevel = Number(device.waterLevel || 0);
       const critThresh = device.criticalThreshold || 10;
       
       const now = Date.now();
       const lastTime = lastNotifiedRef.current[device.mac] || 0;
 
-      // ถ้าเกินค่าวิกฤต และยังไม่ได้เตือนใน 5 นาทีที่ผ่านมา
       if (waterLevel >= critThresh && (now - lastTime > 5 * 60000)) {
         triggerPushNotification(device.name, waterLevel);
         lastNotifiedRef.current[device.mac] = now;
       }
     });
-  }, [logs, devices, triggerPushNotification]);
+  }, [devices, triggerPushNotification]);
 
   const calculateWater = useCallback((level: any) => {
     const raw = Number(level);
@@ -197,11 +189,26 @@ export default function Home() {
     return (Date.now() - lastLogTime) > 15 * 60 * 1000; 
   }, [activeLogs]);
 
+  // 🌟 [แก้บั๊ก] ดึงค่าระดับน้ำจาก Array ของ Devices ที่อัปเดต Real-time เสมอ
   const waterInTank = useMemo(() => {
+    if (selectedDeviceMac === 'ALL') {
+      const validDevices = devices.filter(d => typeof d.waterLevel === 'number');
+      if (validDevices.length > 0) {
+        const sum = validDevices.reduce((acc, d) => acc + d.waterLevel, 0);
+        return sum / validDevices.length;
+      }
+    } else {
+      const currentD = devices.find(d => d.mac === selectedDeviceMac);
+      if (currentD && typeof currentD.waterLevel === 'number') {
+        return currentD.waterLevel;
+      }
+    }
+    
+    // Fallback เผื่อจังหวะโหลด
     if (activeLogs.length === 0) return 0;
     const lastEntry = activeLogs[activeLogs.length - 1];
     return calculateWater(lastEntry?.level);
-  }, [activeLogs, calculateWater]);
+  }, [activeLogs, devices, selectedDeviceMac, calculateWater]);
 
   const activeThresholds = useMemo(() => {
     const safeDevices = Array.isArray(devices) ? devices : [];
@@ -213,7 +220,7 @@ export default function Home() {
   }, [selectedDeviceMac, devices, activeLogs]);
 
   const systemStatus = useMemo(() => {
-    if (activeLogs.length === 0) return { label: "NO DATA", state: "offline", color: "text-slate-400", bg: "bg-white/40 dark:bg-black/40 backdrop-blur-md", icon: <WifiOff size={32} className="text-slate-500"/>, border: "border-white/30 dark:border-white/10" };
+    if (devices.length === 0 && activeLogs.length === 0) return { label: "NO DATA", state: "offline", color: "text-slate-400", bg: "bg-white/40 dark:bg-black/40 backdrop-blur-md", icon: <WifiOff size={32} className="text-slate-500"/>, border: "border-white/30 dark:border-white/10" };
     
     if (waterInTank >= activeThresholds.critical) {
       return { label: "DANGER", state: "danger", color: "text-red-600 dark:text-red-500", bg: "bg-red-500/80 backdrop-blur-md", icon: <ShieldAlert size={32} className="text-white"/>, border: "border-red-500/50" };
@@ -223,7 +230,7 @@ export default function Home() {
     }
     
     return { label: "STABLE", state: "safe", color: "text-emerald-600 dark:text-emerald-500", bg: "bg-emerald-500/80 backdrop-blur-md", icon: <CheckCircle2 size={32} className="text-white"/>, border: "border-emerald-500/50" };
-  }, [waterInTank, activeThresholds, activeLogs.length]);
+  }, [waterInTank, activeThresholds, activeLogs.length, devices.length]);
 
   const insights = useMemo(() => {
     if (activeLogs.length < 2) return { maxWater: 0, avgSignal: 0, rateOfChange: 0, timeToFlood: '-', lastUpdate: '-', percentToCritical: 0 };
@@ -270,29 +277,26 @@ export default function Home() {
   const mapDevices = useMemo(() => {
     const safeDevices = Array.isArray(devices) ? devices : [];
     return safeDevices.filter(d => selectedDeviceMac === 'ALL' || d.mac === selectedDeviceMac).map(d => {
-      const dLogs = logs.filter(l => (l.mac || l.device_id) === d.mac);
-      if(dLogs.length === 0) return { ...d, currentLevel: 0, status: 'offline' };
-      const last = dLogs[dLogs.length - 1];
-      const lvl = calculateWater(last.level);
+      const lvl = Number(d.waterLevel || 0);
       let stat = 'safe';
       if(lvl >= (d.criticalThreshold ?? 3.0)) stat = 'danger';
       else if(lvl >= (d.warningThreshold ?? 2.8)) stat = 'warning';
       return { ...d, currentLevel: lvl, status: stat };
     });
-  }, [devices, logs, selectedDeviceMac, calculateWater]);
+  }, [devices, selectedDeviceMac]);
 
   const isDark = resolvedTheme === 'dark';
   const currentDeviceDetail = devices.find(d => d.mac === selectedDeviceMac);
   const displayTrend = currentDeviceDetail?.trend !== undefined ? currentDeviceDetail.trend : insights.rateOfChange;
 
   const trendBadge = useMemo(() => {
-    if (activeLogs.length === 0) return { text: "⏳ รอข้อมูล...", bg: "bg-slate-500/10 border-slate-500 text-slate-500" };
+    if (devices.length === 0 && activeLogs.length === 0) return { text: "⏳ รอข้อมูล...", bg: "bg-slate-500/10 border-slate-500 text-slate-500" };
     if (displayTrend > 2.0) return { text: "🚨 ระดับน้ำกำลังเพิ่มขึ้นอย่างรวดเร็ว!", bg: "bg-red-500/10 border-red-500 text-red-600 dark:text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.5)] animate-pulse" };
     if (displayTrend > 0.5) return { text: "📈 ระดับน้ำกำลังเพิ่มขึ้น", bg: "bg-orange-500/10 border-orange-500 text-orange-600 dark:text-orange-400" };
     if (displayTrend < -2.0) return { text: "📉 ระดับน้ำกำลังลดลงอย่างรวดเร็ว", bg: "bg-emerald-500/10 border-emerald-500 text-emerald-600 dark:text-emerald-400" };
     if (displayTrend < -0.5) return { text: "↘️ ระดับน้ำกำลังลดลง", bg: "bg-emerald-500/10 border-emerald-500 text-emerald-600 dark:text-emerald-400" };
     return { text: "➡️ ระดับน้ำทรงตัว (ปกติ)", bg: "bg-blue-500/10 border-blue-500 text-blue-600 dark:text-blue-400" };
-  }, [displayTrend, activeLogs.length]);
+  }, [displayTrend, activeLogs.length, devices.length]);
 
   const exportToPDF = async () => {
     if (activeLogs.length === 0) return alert("No data available to export.");
@@ -418,7 +422,7 @@ export default function Home() {
 
       <main className="max-w-[1600px] mx-auto p-4 sm:p-6 space-y-6 relative z-10">
         
-        {/* แถบเลือก Node (Scroll แนวนอนได้) */}
+        {/* แถบเลือก Node */}
         <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar snap-x">
           <button
             onClick={() => setSelectedDeviceMac('ALL')}
@@ -432,7 +436,7 @@ export default function Home() {
           </button>
           {Array.isArray(devices) && devices.map((dev) => {
             const isOfflineStatus = (Date.now() - new Date(dev.lastPing || Date.now()).getTime()) > 15 * 60 * 1000;
-            const isDanger = dev.waterLevel >= (dev.criticalThreshold || 10);
+            const isDanger = Number(dev.waterLevel || 0) >= (dev.criticalThreshold || 10);
             return (
               <button
                 key={dev.mac}
@@ -451,10 +455,9 @@ export default function Home() {
           })}
         </div>
 
-        {/* Header & Current Status */}
+        {/* Hero Section */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className={`lg:col-span-8 p-6 sm:p-8 rounded-[2.5rem] shadow-2xl flex flex-col justify-between relative overflow-hidden transition-all backdrop-blur-xl ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
-            
             <div className={`mb-6 w-fit px-5 py-2.5 rounded-2xl border-2 font-black text-sm md:text-base tracking-wide flex items-center gap-2 transition-all ${trendBadge.bg}`}>
                {trendBadge.text}
             </div>
@@ -466,8 +469,8 @@ export default function Home() {
                     {isOffline && activeLogs.length > 0 && <span className="px-2 py-0.5 rounded text-[9px] bg-red-500/20 text-red-600 dark:text-red-400 backdrop-blur-md">OFFLINE</span>}
                   </h2>
                   <div className="flex items-baseline gap-2 drop-shadow-sm">
-                     <span className={`text-6xl sm:text-7xl font-black tabular-nums tracking-tighter ${activeLogs.length === 0 ? 'text-slate-400/50' : isDark ? 'text-white' : 'text-slate-800'}`}>
-                       {activeLogs.length > 0 ? waterInTank.toFixed(2) : '-.--'}
+                     <span className={`text-6xl sm:text-7xl font-black tabular-nums tracking-tighter ${(devices.length === 0 && activeLogs.length === 0) ? 'text-slate-400/50' : isDark ? 'text-white' : 'text-slate-800'}`}>
+                       {(devices.length > 0 || activeLogs.length > 0) ? waterInTank.toFixed(2) : '-.--'}
                      </span>
                      <span className="text-xl sm:text-2xl font-bold text-slate-500 dark:text-slate-400">cm</span>
                   </div>
@@ -476,21 +479,13 @@ export default function Home() {
                <div className="flex flex-col items-end gap-2">
                   <div className={`flex items-center gap-2 px-4 py-2 rounded-full border shadow-sm ${systemStatus.bg} ${systemStatus.border}`}>
                      {systemStatus.icon}
-                     <span className={`font-black tracking-widest text-sm pr-1 ${activeLogs.length === 0 ? 'text-slate-500' : 'text-white drop-shadow-md'}`}>{systemStatus.label}</span>
+                     <span className={`font-black tracking-widest text-sm pr-1 ${(devices.length === 0 && activeLogs.length === 0) ? 'text-slate-500' : 'text-white drop-shadow-md'}`}>{systemStatus.label}</span>
                   </div>
-                  
                   {selectedDeviceMac !== 'ALL' && currentDeviceDetail && (
                     <div className="flex gap-2">
                       <div className="px-3 py-1.5 rounded-xl text-[9px] font-black uppercase border bg-white/40 dark:bg-black/40 border-white/20 backdrop-blur-md flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
                         <Signal size={12} className={currentDeviceDetail.signal > 10 ? "text-emerald-500" : "text-red-500"} />
                         {currentDeviceDetail.signal || 0} CSQ
-                      </div>
-                      <div className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase border backdrop-blur-md flex items-center gap-1.5 ${
-                        currentDeviceDetail.isSmsEnabled 
-                          ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30' 
-                          : 'bg-slate-500/10 text-slate-500 border-slate-500/30'
-                      }`}>
-                        <Smartphone size={12} /> SMS Alert: {currentDeviceDetail.isSmsEnabled ? 'ON' : 'OFF'}
                       </div>
                     </div>
                   )}
@@ -519,63 +514,36 @@ export default function Home() {
             </div>
           </div>
 
-          <div className={`lg:col-span-4 rounded-[2.5rem] p-6 sm:p-8 shadow-2xl flex flex-col justify-between transition-all backdrop-blur-xl ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
-            {weather ? (
-              <>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-[10px] font-bold text-slate-500 dark:text-slate-300 uppercase tracking-widest flex items-center gap-1 drop-shadow-sm"><MapPin size={12} /> Surin</h3>
-                    <p className={`text-sm font-bold mt-1 drop-shadow-sm ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{weatherDetails?.text}</p>
+          <div className="lg:col-span-4 flex flex-col gap-6">
+            <div className={`flex-grow h-[200px] rounded-[2.5rem] overflow-hidden shadow-2xl border transition-all ${isDark ? 'border-white/10' : 'border-white/50'}`}>
+              <DeviceMap devices={mapDevices} selectedMac={selectedDeviceMac} />
+            </div>
+            <div className={`p-6 rounded-[2.5rem] shadow-2xl transition-all backdrop-blur-xl ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
+              {weather ? (
+                <>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="text-[9px] font-bold text-slate-500 uppercase tracking-widest drop-shadow-sm"><MapPin size={10} className="inline mr-1" /> Surin</h3>
+                      <p className={`text-xs font-bold mt-1 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{weatherDetails?.text}</p>
+                    </div>
+                    <div className="p-2 bg-white/20 rounded-xl">{weatherDetails?.icon}</div>
                   </div>
-                  <div className={`p-2 rounded-2xl shadow-sm backdrop-blur-md ${isDark ? 'bg-black/40 border border-white/5' : 'bg-white/60 border border-white/50'}`}>{weatherDetails?.icon}</div>
-                </div>
-                <div className="mt-6">
-                  <div className="flex items-end gap-1 mb-4 drop-shadow-sm">
-                    <span className={`text-5xl font-black tracking-tighter ${isDark ? 'text-white' : 'text-slate-800'}`}>{weather.temperature}</span>
-                    <span className="text-xl font-bold text-slate-500 dark:text-slate-400 pb-1">°C</span>
+                  <div className="mt-4 flex items-end gap-1">
+                    <span className={`text-4xl font-black tracking-tighter ${isDark ? 'text-white' : 'text-slate-800'}`}>{weather.temperature}</span>
+                    <span className="text-lg font-bold text-slate-500 dark:text-slate-400 pb-1">°C</span>
                   </div>
-                </div>
-              </>
-            ) : <Loader2 className="animate-spin m-auto text-slate-400" />}
+                </>
+              ) : <Loader2 className="animate-spin m-auto text-slate-400" />}
+            </div>
           </div>
         </div>
 
-        {/* Current Stat Cards */}
+        {/* Quick Stat Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
            <StatCard icon={<Activity />} label="Highest" value={activeLogs.length > 0 ? insights.maxWater.toFixed(2) : '-'} unit="cm" isDark={isDark} />
            <StatCard icon={signalStatus.icon} label="Signal Status" value={signalStatus.label} valueColor={signalStatus.color} isDark={isDark} />
            <StatCard icon={<Database />} label="Records" value={activeLogs.length} unit="logs" isDark={isDark} />
            <StatCard icon={<Clock />} label="Update" value={insights.lastUpdate} isDark={isDark} />
-        </div>
-
-        {/* Quick Average Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className={`p-5 rounded-3xl border transition-all ${isDark ? 'bg-blue-500/10 border-blue-500/20 shadow-[0_8px_30px_rgb(59,130,246,0.1)]' : 'bg-blue-50 border-blue-100 shadow-sm'}`}>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 bg-blue-500 rounded-lg text-white"><Waves size={16} /></div>
-              <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Avg Water Level</p>
-            </div>
-            <p className={`text-3xl font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>{avgStats.level} <span className="text-xs font-bold text-slate-500">cm</span></p>
-            <p className="text-[9px] text-slate-400 mt-1 uppercase font-bold">Based on selected {timeframe}</p>
-          </div>
-
-          <div className={`p-5 rounded-3xl border transition-all ${isDark ? 'bg-orange-500/10 border-orange-500/20 shadow-[0_8px_30px_rgb(249,115,22,0.1)]' : 'bg-orange-50 border-orange-100 shadow-sm'}`}>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 bg-orange-500 rounded-lg text-white"><Thermometer size={16} /></div>
-              <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">Avg Temperature</p>
-            </div>
-            <p className={`text-3xl font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>{avgStats.temp} <span className="text-xs font-bold text-slate-500">°C</span></p>
-            <p className="text-[9px] text-slate-400 mt-1 uppercase font-bold">Based on selected {timeframe}</p>
-          </div>
-
-          <div className={`p-5 rounded-3xl border transition-all ${isDark ? 'bg-emerald-500/10 border-emerald-500/20 shadow-[0_8px_30px_rgb(16,185,129,0.1)]' : 'bg-emerald-50 border-emerald-100 shadow-sm'}`}>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 bg-emerald-500 rounded-lg text-white"><Droplets size={16} /></div>
-              <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Avg Humidity</p>
-            </div>
-            <p className={`text-3xl font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>{avgStats.humid} <span className="text-xs font-bold text-slate-500">%</span></p>
-            <p className="text-[9px] text-slate-400 mt-1 uppercase font-bold">Based on selected {timeframe}</p>
-          </div>
         </div>
 
         {/* History Chart Section */}
@@ -585,12 +553,9 @@ export default function Home() {
                 <h3 className="font-bold text-sm uppercase tracking-widest text-slate-600 dark:text-slate-300 drop-shadow-sm mb-1 flex items-center gap-2">
                    <BarChart3 size={18} className="text-blue-500" /> Sensor History
                 </h3>
-                <Link href="/analytics" className="text-[10px] font-black text-blue-500 hover:text-blue-600 flex items-center gap-1 transition-all group">
-                   VIEW FULL ANALYTICS <ArrowUpRight size={12} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                </Link>
              </div>
              
-             <div className="flex flex-col sm:flex-row gap-3">
+             <div className="flex flex-wrap gap-3">
                <div className={`flex p-1 rounded-xl shadow-inner backdrop-blur-md ${isDark ? 'bg-black/40 border border-white/5' : 'bg-slate-200/50 border border-white/40'}`}>
                  {['day', 'week', 'month', 'year'].map(t => (
                    <button key={t} onClick={() => setTimeframe(t)} className={`px-3 py-1.5 text-[10px] font-bold uppercase rounded-lg transition-all ${timeframe === t ? (isDark ? 'bg-blue-600/80 text-white shadow-md' : 'bg-white shadow-md text-blue-600') : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>
@@ -599,14 +564,13 @@ export default function Home() {
                  ))}
                </div>
                
-               {/* 🌟 ปุ่ม EXPORT PDF */}
                <button 
                  onClick={exportToPDF}
                  disabled={isExporting || activeLogs.length === 0}
-                 className="flex items-center gap-2 px-4 py-2 bg-blue-600/90 hover:bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                 className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 border border-white/10"
                >
                  {isExporting ? <Loader2 size={14} className="animate-spin"/> : <FileText size={14} />}
-                 {isExporting ? 'Generating...' : 'Export PDF'}
+                 {isExporting ? 'Processing...' : 'Export PDF Report'}
                </button>
              </div>
            </div>
@@ -616,20 +580,21 @@ export default function Home() {
            </div>
         </div>
 
-        {/* Map & Logs Section */}
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-           <div className={`xl:col-span-7 h-[500px] rounded-[2.5rem] overflow-hidden shadow-2xl backdrop-blur-xl transition-all ${isDark ? 'border border-white/10' : 'border border-white/50'}`}>
-              <DeviceMap devices={mapDevices} selectedMac={selectedDeviceMac} />
-           </div>
+        {/* Average Stats Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <AvgCard icon={<Waves />} label="Avg Level" value={avgStats.level} unit="cm" color="blue" isDark={isDark} timeframe={timeframe} />
+          <AvgCard icon={<Thermometer />} label="Avg Temp" value={avgStats.temp} unit="°C" color="orange" isDark={isDark} timeframe={timeframe} />
+          <AvgCard icon={<Droplets />} label="Avg Humid" value={avgStats.humid} unit="%" color="emerald" isDark={isDark} timeframe={timeframe} />
+        </div>
 
-           <div className={`xl:col-span-5 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col h-[500px] backdrop-blur-xl transition-all ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
-              <div className={`p-5 border-b flex justify-between items-center backdrop-blur-md ${isDark ? 'border-white/10 bg-black/20' : 'border-slate-300/30 bg-white/40'}`}>
-                 <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-white drop-shadow-sm">System Logs</h3>
-              </div>
-              <div className="flex-grow overflow-auto p-2">
-                 <RecentLogs logs={activeLogs} devices={devices} />
-              </div>
-           </div>
+        {/* Logs Section */}
+        <div className={`rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col h-[500px] backdrop-blur-xl transition-all ${isDark ? 'bg-[#1C1C1E]/60 border border-white/10' : 'bg-white/60 border border-white/50'}`}>
+          <div className={`p-5 border-b flex justify-between items-center backdrop-blur-md ${isDark ? 'border-white/10 bg-black/20' : 'border-slate-300/30 bg-white/40'}`}>
+             <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-white drop-shadow-sm">System Logs</h3>
+          </div>
+          <div className="flex-grow overflow-auto p-2">
+             <RecentLogs logs={activeLogs} devices={devices} />
+          </div>
         </div>
 
       </main>
@@ -643,7 +608,6 @@ export default function Home() {
             </div>
         </div>
       </div>
-
     </div>
   );
 }
@@ -656,6 +620,20 @@ function StatCard({ icon, label, value, unit, isDark, valueColor }: any) {
       <div className={`text-2xl font-black mt-1 tabular-nums tracking-tight drop-shadow-sm ${valueColor ? valueColor : isDark ? 'text-white' : 'text-slate-800'}`}>
         {value} <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium ml-0.5">{unit}</span>
       </div>
+    </div>
+  );
+}
+
+function AvgCard({ icon, label, value, unit, color, isDark, timeframe }: any) {
+  const colorMap: any = { blue: 'text-blue-500', orange: 'text-orange-500', emerald: 'text-emerald-500' };
+  return (
+    <div className={`p-5 rounded-3xl border transition-all ${isDark ? 'bg-[#1C1C1E]/60 border-white/10' : 'bg-white/60 border-white/50 shadow-sm'}`}>
+      <div className="flex items-center gap-3 mb-2">
+        <div className={`p-2 rounded-lg bg-white/20 ${colorMap[color]}`}>{icon}</div>
+        <p className={`text-[10px] font-black uppercase tracking-widest ${colorMap[color]}`}>{label}</p>
+      </div>
+      <p className={`text-3xl font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>{value} <span className="text-xs font-bold text-slate-500">{unit}</span></p>
+      <p className="text-[9px] text-slate-400 mt-1 uppercase font-bold">AVG. LAST {timeframe.toUpperCase()}</p>
     </div>
   );
 }
